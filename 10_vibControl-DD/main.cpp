@@ -18,7 +18,7 @@
 #define FILEOPEN false	//if you want to output csv, turn this into "true"
 #define LEARN false	//if you need learning part, turn this into "true"
 #define CHECK_VIB true //output csv of all DoF
-#define SHOW_GL false	//if you want to check vib visually, turn this into "true"
+#define SHOW_GL true	//if you want to check vib visually, turn this into "true"
 const float maxSimTime = 500.0;	//max simulation time
 // const float controlStartTime = 2.0;	//control start time
 const float controlStartTime = maxSimTime + 1.0;	//without control
