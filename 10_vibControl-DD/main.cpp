@@ -18,7 +18,7 @@
 #define FILEOPEN false	//if you want to output csv, turn this into "true"
 #define LEARN false	//if you need learning part, turn this into "true"
 #define CHECK_VIB true //output csv of all DoF
-#define SHOW_GL true	//if you want to check vib visually, turn this into "true"
+#define SHOW_GL false	//if you want to check vib visually, turn this into "true"
 const float maxSimTime = 500.0;	//max simulation time
 // const float controlStartTime = 2.0;	//control start time
 const float controlStartTime = maxSimTime + 1.0;	//without control
@@ -107,7 +107,6 @@ void getDayTime();
 void eachStep();
 void eachStep_display();
 void eachStep_timer();
-void learnPos_byAct();
 void learnPos_bySensor(int wave_now);
 void calc_error(SensorUnit(&sensorUnits)[sensorUnitNum]);
 void calc_forwardNN(SensorUnit(&sensorUnits)[sensorUnitNum]);
@@ -922,103 +921,7 @@ void eachStep()
 
 
 /*** for learning ***/
-// 2019.12.19 先生に報告
-void learnPos_byAct()
-{
-		// select leader sensor unit
-		int sensorLeader = rnd(1, sensorUnitNum - 1);
 
-	
-	if (sensorUnits[sensorLeader].checkSteps()) 
-	{	// BP and 情報提供 のタイミングをsensorLeaderが指示
-
-		// select leader actuator unit
-		int actLeader = rnd(0, actUnitNum - 1);
-
-		// select actuator units to join the network
-		// とりあえず最初の1～DoF
-		for (int i = 0; i < DoF; i++) {
-			actUnits[i].isInNetwork = true;
-		}
-
-		// sensor : reward calculation
-		//for (SensorUnit s : sensorUnits) {
-			// s.calc_reward(actUnits[actLeader]);
-			// この処理はcalc_dEdb_actにふくまれるので要らない
-		//}
-
-		// Back Propagation
-		for (int i = 0; i < DoF; i++) { 
-			actUnits[i].calc_dEdb_act(sensorUnits[i]);
-			actUnits[i].updateBias_act();
-		}
-		for (int i = 0; i < DoF; i++) {
-			sensorUnits[i].updateWeight_sensor(actUnits);
-		}
-
-
-		// forward calculation
-
-		for (SensorUnit &s : sensorUnits) {
-			s.changeInputValue();
-		 	// s.calc_inXwei(); 
-		 	// 入力層(sensor units)から出力層(act units)に渡される値を計算
-		 	// floatを返す．この処理はcalc_outputにおいて実行されるのでいらない
-		 }
-		for (ActUnit &a : actUnits) {
-			// 出力層(act units)の値を計算
-			if (a.isInNetwork) {
-				a.calc_output(sensorUnits);
-				// cout << a.expectedReward << endl;
-			}
-		}
-
-		// act leader の処理
-			// 今は少し省略
-		actUnits[actLeader].collectRewards(actUnits);
-
-		for (ActUnit &a : actUnits) {
-			actUnits[actLeader].sort_inreward();
-			a.moveTo(actUnits[actLeader].in_reward[0].first + 1);
-			cout << "actuator unit " << a.actID  << " moved to position: "	
-				<< actUnits[actLeader].in_reward[0].first + 1 
-				<< " , attached num = " << sensorUnits[a.actID - 1].whatNumatDoF << endl;
-			actUnits[actLeader].attachedNum_now[actUnits[actLeader].in_reward[0].first]++;
-			// in_rewardの更新やactuatorの数の変更など...
-		}
-
-
-		for (int i = 0; i < DoF;i++) {
-			// 各自由度についているアクチュエータの数をsensor unitが把握
-			sensorUnits[i].whatNumatDoF = actUnits[actLeader].attachedNum_now[i];
-			actUnits[actLeader].attachedNum_now[i] = 0;
-		}
-
-		learnCount++;
-
-		// -----output files-----
-		learnError << learnCount << "," << Et << ","
-			<< actUnits[actLeader].in_reward[0].first + 1 << endl;
-		// ----- -----
-		networkParams << learnCount;
-		for (SensorUnit s : sensorUnits) {
-			for (int i = 0; i < s.weights.size(); i++) {
-				networkParams << "," << s.weights[i];
-				// cout << s.sensorID << "_" << i + 1 << " : " << s.weights[i] << endl;
-			}
-		}
-		for (int i = 0; i < DoF; i++) {
-			// actUnitsから，学習ネットワークにユニットをランダムに選ぶのならばここは注意
-			networkParams << "," << actUnits[i].bias;
-		}
-		networkParams << endl;
-		// ----- -----
-
-		// if (learnCount % 500 == 0)	cout << learnCount << "times learnt" << endl;
-
-	}
-
-}
 
 // 2019.12.28 先生に報告
 void learnPos_bySensor(int wave_now)

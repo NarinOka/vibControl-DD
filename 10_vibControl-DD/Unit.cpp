@@ -88,33 +88,6 @@ void SensorUnit::readAcceleration(Plant& p)
 
 
 
-// 速度センサ用(不使用)
-//void SensorUnit::readVelocity(Plant& p)
-//{
-//	this->velocity = p.vel[this->readDoF_pos - 1];
-//}
-
-// 変位センサ用(不使用)
-//void SensorUnit::readDisplacement(Plant& p)
-//{
-//	//float x_disp = 0.0;
-//	//x_disp = p.x[readDoF_pos - 1];
-//	//return x_disp;
-//	this->displacement = p.x[this->readDoF_pos - 1];
-//}
-
-// void SensorUnit::cal_vibTimes()
-// {
-// 	if (this->time > (this->simT * (this->vibTimes + 1))) {
-// 		this->vibTimes += 1;
-// 		this->vibTimesChanged = true;
-// 		// cout << this->vibTimes << " period" << endl;
-// 	}
-// 	else {
-// 		this->vibTimesChanged = false;
-// 	}
-// }
-
 void SensorUnit::cal_velocity(float dt)
 {
 	this->velocity_past = this->velocity;
@@ -217,14 +190,6 @@ float SensorUnit::calc_reward()
 
 }
 
-void SensorUnit::updateWeight_sensor(ActUnit (&actUnits)[actUnitNum])
-{
-	for (ActUnit &a : actUnits) {
-		if (a.isInNetwork) {
-			updateWeight(this->weights[a.actID - 1], this->input, a.dEdb);
-		}
-	}
-}
 
 void SensorUnit::updateWeight_sensor(SensorUnit(&sensorUnits)[sensorUnitNum])
 {// sensor 0
@@ -361,11 +326,6 @@ ActUnit::ActUnit(int ID)
 	this->actID = ID + 1;
 
 
-	/*** for learning ***/
-	this->expectedReward = rnd(-1.0, 1.0);
-	this->bias = rnd(-b_ini, b_ini);
-	this->isInNetwork = false;
-
 	/*** leader ***/
 	this->attachedNum_max.resize(DoF);
 	this->attachedNum_now.resize(DoF);
@@ -491,91 +451,3 @@ float ActUnit::outputDampingCoef()
 }
 
 
-
-/*** for learning ***/
-void ActUnit::calc_output(SensorUnit(&sensorUnits)[sensorUnitNum])
-{
-	float sum = 0.0;
-	for (SensorUnit s : sensorUnits)
-		sum += s.calc_inXwei(this->actID);
-	sum += this->bias;
-
-	//this->expectedReward = tanh_NN(sum) * workActUnitNum / DoF;
-	this->expectedReward = tanh_NN(sum);
-}
-
-void ActUnit::calc_dEdb_act(SensorUnit s) 
-{
-	//this->dEdb = calc_dEdb_tanh(this->expectedReward, s.calc_reward(*this));
-	this->dEdb = calc_dEdb_tanh(this->expectedReward, s.calc_reward());
-}
-
-void ActUnit::updateBias_act()
-{
-	updateBias(this->bias, this->dEdb);
-}
-
-
-/*** leader ***/
-void ActUnit::collectRewards(ActUnit (&actUnits)[actUnitNum])
-{
-	int i = 0;
-	for (ActUnit a : actUnits) {
-		if (a.isInNetwork) {
-			this->expectedRewards[i] = a.expectedReward;
-			i++;
-		}
-	}
-}
-
-void ActUnit::sort_inreward()
-{
-	for (int i = 0; i < this->expectedRewards.size(); i++) {
-		this->in_reward[i] = index_value(i, this->expectedRewards[i]);
-	}
-	std::sort(this->in_reward.begin(), this->in_reward.end(), greaterPair);
-}
-
-
-/*******************************************/
-/****************Reward Unit****************/
-/*******************************************/
-RewardUnit::RewardUnit()
-{
-	//default constructor
-	// cout << "this is defalt constructor" << endl;
-}
-
-
-RewardUnit::RewardUnit(int ID)
-{
-	this->rewardID = ID + 1;
-	this->expectedReward = rnd(0.0, 1.0);	//最初の学習時用
-	this->bias = rnd(-b_ini, b_ini);
-}
-
-
-RewardUnit::~RewardUnit()
-{
-}
-
-
-void RewardUnit::calc_output_rwd(SensorUnit(&sensorUnits)[sensorUnitNum])
-{
-	float sum = 0.0;
-	for (SensorUnit s : sensorUnits)
-		sum += s.calc_inXwei(this->rewardID);
-	sum += this->bias;
-
-	this->expectedReward = sigmoid(sum);
-}
-
-void RewardUnit::calc_dEdb_rwd(SensorUnit s)
-{
-	this->dEdb = calc_dEdb_sigmoid(this->expectedReward, s.calc_reward());
-}
-
-void RewardUnit::updateBias_rwd()
-{
-	updateBias(this->bias, this->dEdb);
-}

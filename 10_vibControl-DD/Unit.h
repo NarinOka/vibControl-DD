@@ -68,7 +68,6 @@ public:
 
 	float calc_inXwei(int ID);
 	float calc_reward();
-	void updateWeight_sensor(ActUnit(&actUnits)[actUnitNum]);
 	void changeInputValue();
 
 
@@ -137,17 +136,6 @@ public:
 	float outputDampingCoef();
 
 
-	/*** for learning ***/
-	float expectedReward; // output of network
-	float bias;
-	float dEdb;
-	bool isInNetwork;
-
-	void calc_output(SensorUnit(&sensorUnits)[sensorUnitNum]);
-	void calc_dEdb_act(SensorUnit s);
-	void updateBias_act();
-
-
 	/*** leader ***/
 	// 2019.12.19 abolish leader(still some values and functions can be used)
 	std::vector<int> attachedNum_max;
@@ -155,36 +143,9 @@ public:
 	std::vector<float> expectedRewards;
 	std::vector<index_value> in_reward;
 
-	void collectRewards(ActUnit(&actUnits)[actUnitNum]);
-	void sort_inreward();
-
 };
 
 
-/*******************************************/
-/****************Reward Unit****************/
-/*******************************************/
-class RewardUnit
-{
-
-public:
-	RewardUnit();	//default constructor
-	RewardUnit(int ID);
-	~RewardUnit();
-
-	/*** for learning ***/
-	// variables
-	int rewardID;
-	float bias;
-	float expectedReward; // output of network
-	float dEdb;
-
-	// functions
-	void calc_output_rwd(SensorUnit(&sensorUnits)[sensorUnitNum]);
-	void calc_dEdb_rwd(SensorUnit s);
-	void updateBias_rwd();
-
-};
 
 // îzóÒÇÃéQè∆ìnÇµ
 // https://pknight.hatenablog.com/entry/20100317/1268796690
