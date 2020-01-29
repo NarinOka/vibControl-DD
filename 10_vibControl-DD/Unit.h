@@ -133,8 +133,8 @@ public:
 	int judgeBiggestPos(SensorUnit(&sensorUnits)[sensorUnitNum]);	// ïségóp
 	void moveTo(int DoFpos);
 	void getEachBiggestDisp(SensorUnit(&sensorUnits)[sensorUnitNum]);
-	float outputDampingCoef();
-
+	// DD
+	void attachDD(Plant& p);
 
 	/*** leader ***/
 	// 2019.12.19 abolish leader(still some values and functions can be used)

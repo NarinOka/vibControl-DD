@@ -443,11 +443,8 @@ void ActUnit::getEachBiggestDisp(SensorUnit (&sensorUnits)[sensorUnitNum])
 }
 
 
-float ActUnit::outputDampingCoef()
+// Dynamic Damper
+void attachDD(Plant& p)
 {
-	//‚ ‚Æ‚ÅÝŒv•û–@‚ðl—¶
-	this->dampingCoef = 0.5;
-	return this->dampingCoef;
+	// change matrix after DD is attached
 }
-
-

@@ -534,10 +534,6 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 				sensorUnits[0].sort_NNoutputs(sensorUnits);
 				pos = sensorUnits[0].sortedNNoutputs[0].first;//一番大きいところ
 
-				// for (int i = 0; i < DoF; i++) {
-				// 	cout << sensorUnits[i+1].output << endl;
-				// }
-
 				actUnits[workingActNum].moveTo(pos);
 
 				// file output
@@ -545,9 +541,6 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 					//modeChange_byAct << i << "," << sensorUnits[i].output << endl;	//normalized
 					modeChange_byAct << i << "," << sensorUnits[i].biggestDisp << endl;	//original amp
 				}
-				modeChange_byAct << "0,0" << endl;
-				modeChange_byAct << endl;
-
 			}
 			else {//その後，センサーの読み取り値をそのまま利用
 				sensorUnits[0].sort_biggestDisps(sensorUnits);
@@ -562,10 +555,10 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 					//modeChange_byAct << i << "," << sensorUnits[i].normalizedBiggestDisp << endl;	// normalized
 					modeChange_byAct << i << "," << sensorUnits[i].biggestDisp << endl;	// original disp
 				}
+			}
+
 				modeChange_byAct << "0,0" << endl;
 				modeChange_byAct << endl;
-
-			}
 
 
 			// file output
@@ -574,9 +567,13 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 			cout << "actuator unit " << workingActNum + 1 << "moved to " << pos << endl;
 			workingActNum++;
 			initBiggest = true;
+
 			// for display
 			attachedActNum[pos - 1]++;
 			actUnits[workingActNum].whatNumAtDoF = attachedActNum[pos - 1];
+
+			////// actUnits[i].attachDD(withCtrl);
+
 		}
 
 	}
@@ -592,6 +589,7 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 	for (int i = 0; i < actUnitNum; i++) {
 		if (actUnits[i].currentPos != 0) {
 			f1[actUnits[i].currentPos - 1] += -actUnits[i].dampingCoef * withCtrl.vel[actUnits[i].currentPos - 1];
+		
 		}
 	}
 
