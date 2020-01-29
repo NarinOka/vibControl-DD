@@ -50,14 +50,9 @@ int simSteps = 0;
 int WinID[2] = { 0 };   //ウィンドウのID
 int winNum = 0;       //今処理しているウィンドウの数字
 
-ofstream controlled;
-ofstream vibmodes;
-ofstream time_displacement_force;
 ofstream allDisplacement;
 ofstream actHistory;
 ofstream modeChange_byAct;
-ofstream sensorValues;
-ofstream sensorANDplant;
 // learn
 ofstream learnError;
 ofstream networkParams;
@@ -76,7 +71,6 @@ Plant withoutCtrl(MASS, DAMPER, SPRING);	//initialize instance "withoutCtrl"
 //ActUnit **actUnits = new ActUnit*[actUnitNum];	//actuator units(アクチュエータユニット群)
 SensorUnit sensorUnits[sensorUnitNum];
 ActUnit actUnits[actUnitNum];
-RewardUnit rewardUnits[rewardUnitNum];
 
 bool actUnitIsHere[DoF] = { false };
 int workingActNum = 0;	//withCtrl(Plant)に付いている総アクチュエータユニットの数
@@ -102,10 +96,7 @@ void display();
 void timer(int num);
 void initSensorUnits(Plant& p);
 void initActUnits();
-void initRewardUnits();
-void vibControl();
 void vibControl_byUnits(ActUnit(&actUnits)[actUnitNum], SensorUnit(&sensorUnits)[sensorUnitNum]);
-void vibControl_bySingleUnit(ActUnit& a, SensorUnit sensorUnits[sensorUnitNum]);
 bool dispofAllDoF(Plant& p);
 void fileOpen(bool fopen);
 void fileClose();
@@ -503,42 +494,6 @@ void initActUnits()
 	}
 }
 
-//initialize reward units
-void initRewardUnits()
-{
-	for (int i = 0; i < rewardUnitNum; i++) {
-		rewardUnits[i] = RewardUnit(i);
-	}
-}
-
-// 振動制御：ほぼ決め打ちで理想に近め
-void vibControl()
-{
-	/******
-	とりあえず，変位励振によって加わる外力の符号を逆にしたものを
-	仮想的な制御加振力として代入
-	winNum == 0のときのみ
-	※一番最後の項を入れないと，確かに加速度は0に近づくけど，
-	　変位が0でないため，変な形で静止する
-	 ******/
-	f1[0] += withCtrl.c[0] * withCtrl.vel[0]
-		+ withCtrl.c[1] * (withCtrl.vel[0] - withCtrl.vel[1])
-		+ withCtrl.k[0] * withCtrl.x[0]
-		+ withCtrl.k[1] * (withCtrl.x[0] - withCtrl.x[1])
-		- (withCtrl.k[0] * withCtrl.y + withCtrl.c[0] * withCtrl.vy)
-		- 2.0 * M_PI * withCtrl.simFreq * withCtrl.x[0];	//to decrease amplitude
-	for (int i = 1; i < (DoF - 1); i++)
-	{
-		f1[i] += withCtrl.c[i] * (withCtrl.vel[i] - withCtrl.vel[i - 1])
-			+ withCtrl.c[i + 1] * (withCtrl.vel[i] - withCtrl.vel[i + 1])
-			+ withCtrl.k[i] * (withCtrl.x[i] - withCtrl.x[i - 1])
-			+ withCtrl.k[i + 1] * (withCtrl.x[i] - withCtrl.x[i + 1])
-			- 2.0 * M_PI * withCtrl.simFreq * withCtrl.x[i];	//to decrease amplitude
-	}
-	f1[DoF - 1] += withCtrl.c[DoF - 1] * (withCtrl.vel[DoF - 1] - withCtrl.vel[DoF - 2])
-		- withCtrl.k[DoF - 1] * (withCtrl.x[DoF - 1] - withCtrl.x[DoF - 2])
-		- 2.0 * M_PI * withCtrl.simFreq * withCtrl.x[DoF - 1];	//to decrease amplitude
-}
 
 // Vibration control by units
 void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnits)[sensorUnitNum])
@@ -640,16 +595,6 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 			f1[actUnits[i].currentPos - 1] += -actUnits[i].dampingCoef * withCtrl.vel[actUnits[i].currentPos - 1];
 		}
 	}
-
-}
-
-// Vibration control by single unit (vibControl_byUnitsでOK)
-void vibControl_bySingleUnit(ActUnit& a, SensorUnit sensorUnits[sensorUnitNum])
-{
-	//使う際はf1のassertion failedに注意
-	int pos = a.currentPos;
-	f1[pos - 1] += a.outputForce(sensorUnits[pos - 1]);
-	// cout << f1[pos - 1] << endl;
 
 }
 
@@ -770,22 +715,15 @@ void fileOpen(bool fopen)
 		//--- result
 		result << "Position,output,teach" << endl;
 
-		//--- sensorANDplant
-		sensorANDplant << ",accel,accel_s,vel,vel_s,disp,disp_s" << endl;
 
 	}
 }
 
 void fileClose()
 {
-	controlled.close();
-	time_displacement_force.close();
 	allDisplacement.close();
 	actHistory.close();
 	modeChange_byAct.close();
-	sensorValues.close();
-	sensorANDplant.close();
-	vibmodes.close();
 	learnError.close();
 	networkParams.close();
 	learningConditions.close();
@@ -926,29 +864,11 @@ void eachStep_display()
 	/********** in display func **********/
 
 	// -----output file-----
-	time_displacement_force << t;
-	for (int i = 0; i < actUnitNum; i++) {
-		time_displacement_force << "," << withCtrl.y << "," << actUnits[0].force;
-	}
-	time_displacement_force << endl;
-	// ----- -----
 	allDisplacement << t << "," << withCtrl.y;
 	for (int i = 0; i < DoF; i++) {
 		allDisplacement << "," << withCtrl.x[i];
 	}
 	allDisplacement << endl;
-	// ----- -----
-	sensorValues << t;
-	for (SensorUnit s : sensorUnits) {
-		sensorValues << "," << s.displacement;
-	}
-	sensorValues << "," << withCtrl.y;
-	sensorValues << endl;
-	// ----- -----
-	sensorANDplant << t << "," << withCtrl.ay << "," << sensorUnits[0].acceleration
-		<< "," << withCtrl.vy << "," << sensorUnits[0].velocity
-		<< "," << withCtrl.y << "," << sensorUnits[0].displacement << endl;
-	
 	// ----- -----
 
 
@@ -1427,12 +1347,6 @@ finish:
 	//to check leaving glutMainLoop
 	cout << endl << "*********************** finished! ***********************" << endl << endl;
 
-	vibmodes << 0 << "," << 0 << endl;
-	//controlled << 0 << "," << 0 << endl;
-	for (int i = 0; i < DoF; i++) {
-		//controlled << withCtrl.modeAmp[i] << "," << i + 1 << endl;
-		vibmodes << withoutCtrl.modeAmp[i] << "," << i + 1 << endl;
-	}
 
 	//--- learningConditions
 	learningConditions << "Learning times," << learnCount << endl;
