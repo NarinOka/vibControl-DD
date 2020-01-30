@@ -307,7 +307,7 @@ ActUnit::ActUnit()
 	//default constructor
 }
 
-ActUnit::ActUnit(int ID)
+ActUnit::ActUnit(int ID, Plant p)
 {
 	//initial position of an actuator unit.
 	//select actual DoF number(not DoF - 1).
@@ -326,9 +326,10 @@ ActUnit::ActUnit(int ID)
 	this->actID = ID;
 
 	/*** dynamic damper ***/ //とりあえずすべてのactが同じ値を持つ．1st natufreqでDoF5につくのに最適なパラメータ
-	this->m_DD = 0.1;
-	this->k_DD = 23.0;
-	this->c_DD = 0.46;
+	// this->m_DD = 0.1;
+	// this->k_DD = 23.0;
+	// this->c_DD = 0.46;
+	this->setDDparams(p);
 
 	/*** leader ***/
 	this->attachedNum_max.resize(DoF);
@@ -452,8 +453,8 @@ void ActUnit::attachDD(Plant& p, Eigen::VectorXf& f1)
 {
 	// conservativeResize: https://stackoverflow.com/questions/27404811/append-column-to-matrix-using-eigen-library
 	// conservativeResizeLike: https://stackoverflow.com/questions/25317687/conservativeresize-with-zero-values-for-the-new-values
+	
 	// change matrix after DD is attached
-
 	p.M.conservativeResizeLike(Eigen::MatrixXf::Zero(DoF + this->actID, DoF + this->actID));
 	p.C.conservativeResizeLike(Eigen::MatrixXf::Zero(DoF + this->actID, DoF + this->actID));
 	p.K.conservativeResizeLike(Eigen::MatrixXf::Zero(DoF + this->actID, DoF + this->actID));
@@ -477,6 +478,48 @@ void ActUnit::attachDD(Plant& p, Eigen::VectorXf& f1)
 	p.K(DoF + this->actID - 1, this->currentPos - 1) -= this->k_DD;
 	p.K(DoF + this->actID - 1, DoF + this->actID - 1) += this->k_DD;
 
-
-	
 }
+
+// これはアクチュエータユニットが元から保有しているもの(dynamic damperのパラメータ設定)．やむなくpを引数に．
+void ActUnit::setDDparams(Plant p)
+{
+	if (VIBMODE > 0 && VIBMODE < DoF + 1) {
+		this->m_DD = m_DD_mode[VIBMODE - 1];
+		this->c_DD = c_DD_mode[VIBMODE - 1];
+		this->k_DD = k_DD_mode[VIBMODE - 1];
+	}
+	else
+	{	// 任意の振動数が入力されたとき
+		// 1～DoFについては，それぞれの中間の振動数を求め，条件分岐に用いる
+		float midFreq[DoF - 1];
+		for (int i = 0; i < DoF - 1; i++) {
+			midFreq[i] = (p.natural_freq[i] + p.natural_freq[i + 1]) / 2.0;
+
+		}
+
+		// set as 1
+		if (p.natural_freq[0] < p.simFreq && p.simFreq < midFreq[0]) {
+			this->m_DD = m_DD_mode[0];
+			this->c_DD = c_DD_mode[0];
+			this->k_DD = k_DD_mode[0];
+		}
+		else {
+			// set as 2 ～ DoF-1
+			for (int i = 1; i < DoF - 1; i++) {
+				if (midFreq[i - 1] < p.simFreq && p.simFreq < midFreq[i]) {
+					this->m_DD = m_DD_mode[i];
+					this->c_DD = c_DD_mode[i];
+					this->k_DD = k_DD_mode[i];
+				}
+			}
+			// set as DoF
+			if (midFreq[DoF - 2] < p.simFreq) {
+				this->m_DD = m_DD_mode[DoF - 1];
+				this->c_DD = c_DD_mode[DoF - 1];
+				this->k_DD = k_DD_mode[DoF - 1];
+			}
+		}
+
+	}
+}
+

@@ -28,8 +28,6 @@ const float freqSet[waveNum] = {
 const float length = 0.35; //各質点間の距離
 const float MinofMax_value = 0.003;	// [m] Minimum of Max displacement(condition of simulation termination) 
 
-//const double PI = 4.0 * atan(1.0); //円周率→M_PIを使用
-
 class Plant
 {
 public:

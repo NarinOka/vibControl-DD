@@ -15,13 +15,14 @@
 
 //-------User Control Section-------
 #define BETA 1.0 / 6.0	//linear acceleration method (β=1/6 for Newmark-beta)
-#define FILEOPEN false	//if you want to output csv, turn this into "true"
+#define FILEOPEN true	//if you want to output csv, turn this into "true"
 #define LEARN false	//if you need learning part, turn this into "true"
 #define CHECK_VIB true //output csv of all DoF
-#define SHOW_GL false	//if you want to check vib visually, turn this into "true"
+#define SHOW_GL true	//if you want to check vib visually, turn this into "true"
 #define SHOW_WIN2 false	//window for "withoutCtrl" これをtureにするなら，aaとaa_invのサイズを工夫するべき
-const float maxSimTime = 10;	//max simulation time
-const float controlStartTime = 2.0;	//control start time
+const float controlStartTime = 5.0;	//control start time
+const float DDIntervalTime = 5.0;	//interval time for actuators to be attached
+const float maxSimTime = controlStartTime + actUnitNum * DDIntervalTime + DDIntervalTime;	//max simulation time
 // const float controlStartTime = maxSimTime + 1.0;	//without control
 const float learnStartTime = 2.0;	//learn start time
 
@@ -96,7 +97,7 @@ void calc_vib();
 void display();
 void timer(int num);
 void initSensorUnits(Plant& p);
-void initActUnits();
+void initActUnits(Plant p);
 void vibControl_byUnits(ActUnit(&actUnits)[actUnitNum], SensorUnit(&sensorUnits)[sensorUnitNum]);
 bool dispofAllDoF(Plant& p);
 void fileOpen(bool fopen);
@@ -502,10 +503,10 @@ void initSensorUnits(Plant& p) //付加される制御対象を引数とする
 }
 
 //initialize actuator units
-void initActUnits()
+void initActUnits(Plant p)
 {
 	for (int i = 0; i < actUnitNum; i++) {
-		actUnits[i] = ActUnit(i + 1);
+		actUnits[i] = ActUnit(i + 1, p);
 	}
 }
 
@@ -544,7 +545,7 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 	int pos = 0;
 
 	if (workingActNum < actUnitNum) {
-		if(t > controlStartTime + workingActNum * controlStartTime){
+		if(t > controlStartTime + workingActNum * DDIntervalTime){
 			if (workingActNum == 0) { //最初の一体はネットワークの出力が一番大きいところに移動
 				calc_forwardNN(sensorUnits);
 				sensorUnits[0].sort_NNoutputs(sensorUnits);
@@ -578,9 +579,14 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 
 
 			// file output
-			actHistory << t << "," << pos << "," << actUnits[workingActNum].dampingCoef << endl;
+			if (useDD)
+				actHistory << t << "," << pos << "," << actUnits[workingActNum].m_DD << "," 
+				<< actUnits[workingActNum].k_DD << "," << actUnits[workingActNum].c_DD << endl;
+			else
+				actHistory << t << "," << pos << "," << actUnits[workingActNum].dampingCoef << endl;
 
-			cout << "### actuator unit " << workingActNum + 1 << " moved to " << pos << " ###" << endl;
+
+			cout << "##### actuator unit " << workingActNum + 1 << " moved to " << pos << " #####" << endl;
 			workingActNum++;
 			initBiggest = true;
 
@@ -606,12 +612,14 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 		}
 
 	}
-	if (t > controlStartTime + (workingActNum - 1) * controlStartTime + 0.4 && initBiggest) {
+	// if (t > controlStartTime + (workingActNum - 1) * controlStartTime + 0.4 && initBiggest) {
+	if (t > controlStartTime + workingActNum * DDIntervalTime - withCtrl.simT * 3.0 && initBiggest) {
 		//より正確にモードが得られるように
 		for (int i = 1; i < sensorUnitNum; i++) {
 			sensorUnits[i].biggestDisp = 0.0;	//initialization for next step
 		}
 		initBiggest = false;
+			cout << "Biggest displacements reset" << endl << endl;
 	}
 
 	// additional damping force
@@ -708,7 +716,10 @@ void fileOpen(bool fopen)
 		}
 		allDisplacement << endl;
 		//--- actHistory
-		actHistory << "Simulation time [s],Position,Damping coefficient" << endl;
+		if (useDD)
+			actHistory << "Simulation time [s],Position,mass,damper,spring" << endl;
+		else
+			actHistory << "Simulation time [s],Position,Damping coefficient" << endl;
 		//--- modeChange_byAct
 		modeChange_byAct << "Position,Amplitude" << endl;
 		//--- learnError
@@ -1077,7 +1088,7 @@ int main(int argc, char *argv[])
 	/**** initialize units ****/
 	initSensorUnits(withCtrl);
 	// initSensorUnits(withoutCtrl);	//制御なしの変位を獲得するため(このままだとただinstanceが上書きされる)
-	initActUnits();	//withCtrl用
+	initActUnits(withCtrl);	//withCtrl用
 
 	fileOpen(FILEOPEN);	//open output files
 						// sensorUnits[0].inputNumを使用するのでinitSensorUnitsのあと
@@ -1224,7 +1235,7 @@ freChanged2:
 			col++;
 		}
 
-		cout << "----- network parameter setting completed -----" << endl;
+		cout << "----- network parameter setting completed -----" << endl << endl;
 
 	}
 

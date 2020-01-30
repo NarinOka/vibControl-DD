@@ -21,7 +21,9 @@ const int addUnitCoef = 0;	//add actuator units at every addUnitCoef * getAmp_st
 
 /* Vibration control method */
 const bool useDD = true; //false -> skyhook
-
+const float m_DD_mode[DoF] = { 0.10, 0.10, 0.10, 0.10, 0.10};
+const float c_DD_mode[DoF] = { 0.46, 1.4, 2.1, 2.7, 3.1};
+const float k_DD_mode[DoF] = { 23.0, 190.0, 480.0, 790.0, 1000.0};
 
 
 /*******************************************/
@@ -111,7 +113,7 @@ class ActUnit
 
 public:
 	ActUnit();
-	ActUnit(int ID);
+	ActUnit(int ID, Plant p);
 	~ActUnit();
 
 	// variables
@@ -140,6 +142,7 @@ public:
 	float k_DD;
 	float c_DD;
 	void attachDD(Plant& p, Eigen::VectorXf& f1);
+	void setDDparams(Plant p);
 
 	/*** leader ***/
 	// 2019.12.19 abolish leader(still some values and functions can be used)
