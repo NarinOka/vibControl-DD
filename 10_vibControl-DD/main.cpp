@@ -19,9 +19,10 @@
 #define LEARN false	//if you need learning part, turn this into "true"
 #define CHECK_VIB true //output csv of all DoF
 #define SHOW_GL false	//if you want to check vib visually, turn this into "true"
-const float maxSimTime = 500.0;	//max simulation time
-// const float controlStartTime = 2.0;	//control start time
-const float controlStartTime = maxSimTime + 1.0;	//without control
+#define SHOW_WIN2 false	//window for "withoutCtrl" これをtureにするなら，aaとaa_invのサイズを工夫するべき
+const float maxSimTime = 10;	//max simulation time
+const float controlStartTime = 2.0;	//control start time
+// const float controlStartTime = maxSimTime + 1.0;	//without control
 const float learnStartTime = 2.0;	//learn start time
 
 //-------bitmap出力用-------
@@ -145,9 +146,17 @@ void reinitVariables()
 	withCtrl.vy = 0.0;
 	withCtrl.ay = 0.0;
 
-	withCtrl.x = Eigen::VectorXf::Zero(DoF);
-	withCtrl.vel = Eigen::VectorXf::Zero(DoF);
-	withCtrl.accel = Eigen::VectorXf::Zero(DoF);
+	if (useDD) {
+		withCtrl.x = Eigen::VectorXf::Zero(DoF + workingActNum);
+		withCtrl.vel = Eigen::VectorXf::Zero(DoF + workingActNum);
+		withCtrl.accel = Eigen::VectorXf::Zero(DoF + workingActNum);
+	}
+	else {
+		withCtrl.x = Eigen::VectorXf::Zero(DoF);
+		withCtrl.vel = Eigen::VectorXf::Zero(DoF);
+		withCtrl.accel = Eigen::VectorXf::Zero(DoF);
+	}
+
 	withCtrl.biggestDisps = Eigen::VectorXf::Zero(DoF);
 
 	withoutCtrl.y = 0.0;
@@ -174,12 +183,19 @@ void reinitVariables()
 //各時刻における位置の算出(Newmark-beta method)
 void calc_vib()
 {
+		Eigen::VectorXf x_past(DoF), v_past(DoF), a_past(DoF),
+			f_past(DoF); // 1step前(現在)の値
 
-	Eigen::VectorXf x_past(DoF), v_past(DoF), a_past(DoF),
-		f_past(DoF); // 1step前(現在)の値
 
 	if (winNum == 0)
 	{ // with control
+		if (useDD) {
+			x_past.resize(DoF + workingActNum);
+			v_past.resize(DoF + workingActNum);
+			a_past.resize(DoF + workingActNum);
+			f_past.resize(DoF + workingActNum);
+		}
+
 	  // External force	//external force from displacement excitation added to
 	  // DoF No.1
 		f1[0] += (withCtrl.k[0] * withCtrl.y + withCtrl.c[0] * withCtrl.vy);
@@ -489,7 +505,7 @@ void initSensorUnits(Plant& p) //付加される制御対象を引数とする
 void initActUnits()
 {
 	for (int i = 0; i < actUnitNum; i++) {
-		actUnits[i] = ActUnit(i);
+		actUnits[i] = ActUnit(i + 1);
 	}
 }
 
@@ -564,7 +580,7 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 			// file output
 			actHistory << t << "," << pos << "," << actUnits[workingActNum].dampingCoef << endl;
 
-			cout << "actuator unit " << workingActNum + 1 << "moved to " << pos << endl;
+			cout << "### actuator unit " << workingActNum + 1 << " moved to " << pos << " ###" << endl;
 			workingActNum++;
 			initBiggest = true;
 
@@ -572,7 +588,20 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 			attachedActNum[pos - 1]++;
 			actUnits[workingActNum].whatNumAtDoF = attachedActNum[pos - 1];
 
-			////// actUnits[i].attachDD(withCtrl);
+			// attach dynamic damper
+			if (useDD) {
+				actUnits[workingActNum - 1].attachDD(withCtrl, f1);
+
+				// recalculate matrix
+				aa = withCtrl.M + dt * withCtrl.C / 2 + BETA * dt * dt * withCtrl.K; 
+				aa_inv = aa.inverse();
+
+				cout << "M-matrix is:\n" << withCtrl.M << endl;
+				cout << "C-matrix is:\n" << withCtrl.C << endl;
+				cout << "K-matrix is:\n" << withCtrl.K << endl;
+				cout << "aa-matrix is:\n" << aa << endl;
+				cout << "aa_inv-matrix is:\n" << aa_inv << endl << endl;
+			}
 
 		}
 
@@ -585,11 +614,12 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 		initBiggest = false;
 	}
 
-	// additional force
-	for (int i = 0; i < actUnitNum; i++) {
-		if (actUnits[i].currentPos != 0) {
-			f1[actUnits[i].currentPos - 1] += -actUnits[i].dampingCoef * withCtrl.vel[actUnits[i].currentPos - 1];
-		
+	// additional damping force
+	if (!useDD) {
+		for (int i = 0; i < actUnitNum; i++) {
+			if (actUnits[i].currentPos != 0) {
+				f1[actUnits[i].currentPos - 1] += -actUnits[i].dampingCoef * withCtrl.vel[actUnits[i].currentPos - 1];
+			}
 		}
 	}
 
@@ -778,8 +808,11 @@ void timer(int num)
 	glutSetWindow(WinID[0]);
 	glutPostRedisplay(); //再描画の必要を訴える
 
-	glutSetWindow(WinID[1]);
-	glutPostRedisplay();
+	if (SHOW_WIN2) {
+		glutSetWindow(WinID[1]);
+		glutPostRedisplay();
+	}
+
 
 }
 
@@ -875,7 +908,11 @@ void eachStep_display()
 
 	//なぜ初期化するか⇒次の関数(vibControlとcalc_vib)で
 	//計算した外力の値を+=で代入する前に0としておくため．
-	f1 = Eigen::VectorXf::Zero(DoF);
+	if(useDD)
+		f1 = Eigen::VectorXf::Zero(DoF + workingActNum);
+	else
+		f1 = Eigen::VectorXf::Zero(DoF);
+
 	f2 = Eigen::VectorXf::Zero(DoF);
 
 	// for network calculation
@@ -1008,8 +1045,6 @@ void calc_forwardNN(SensorUnit (&sensorUnits)[sensorUnitNum])
 
 int main(int argc, char *argv[])
 {
-
-
 
 	getDayTime();
 
@@ -1227,16 +1262,18 @@ freChanged2:
 		glutKeyboardFunc(keyboard);
 		glClearColor(1.0, 1.0, 1.0,	1.0); //ウィンドウを塗りつぶす色の指定（R，G，B，不透明度）
 	//-------Window for withoutCtrl----------------------------------------------------------------------------
-		glutInitWindowPosition(600, 100);
-		//glutInitWindowSize(WIDTH, (int)HEIGHT*DoF / 5);
-		glutInitWindowSize(WIDTH, HEIGHT);
-
-		WinID[1] = glutCreateWindow("without control"); 
-		glutDisplayFunc(display); 
-		glutReshapeFunc(resize); 
-		  /* 入力処理ルーチンの設定 */
-		glutKeyboardFunc(keyboard);
-		glClearColor(1.0, 1.0, 1.0, 1.0); 
+		if (SHOW_WIN2) {
+			glutInitWindowPosition(600, 100);
+			//glutInitWindowSize(WIDTH, (int)HEIGHT*DoF / 5);
+			glutInitWindowSize(WIDTH, HEIGHT);
+			
+			WinID[1] = glutCreateWindow("without control"); 
+			glutDisplayFunc(display); 
+			glutReshapeFunc(resize); 
+			  /* 入力処理ルーチンの設定 */
+			glutKeyboardFunc(keyboard);
+			glClearColor(1.0, 1.0, 1.0, 1.0); 
+		}
 	//-----------------------------------------------------------------------------------
 
 		glutTimerFunc(10, timer, 0); // 100msec.後にtimer1();関数起動

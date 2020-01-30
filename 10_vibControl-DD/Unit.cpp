@@ -323,8 +323,12 @@ ActUnit::ActUnit(int ID)
 	this->dampingCoef = 15.0;
 
 	this->whatNumAtDoF = 0;
-	this->actID = ID + 1;
+	this->actID = ID;
 
+	/*** dynamic damper ***/ //とりあえずすべてのactが同じ値を持つ．1st natufreqでDoF5につくのに最適なパラメータ
+	this->m_DD = 0.1;
+	this->k_DD = 23.0;
+	this->c_DD = 0.46;
 
 	/*** leader ***/
 	this->attachedNum_max.resize(DoF);
@@ -444,7 +448,35 @@ void ActUnit::getEachBiggestDisp(SensorUnit (&sensorUnits)[sensorUnitNum])
 
 
 // Dynamic Damper
-void attachDD(Plant& p)
+void ActUnit::attachDD(Plant& p, Eigen::VectorXf& f1)
 {
+	// conservativeResize: https://stackoverflow.com/questions/27404811/append-column-to-matrix-using-eigen-library
+	// conservativeResizeLike: https://stackoverflow.com/questions/25317687/conservativeresize-with-zero-values-for-the-new-values
 	// change matrix after DD is attached
+
+	p.M.conservativeResizeLike(Eigen::MatrixXf::Zero(DoF + this->actID, DoF + this->actID));
+	p.C.conservativeResizeLike(Eigen::MatrixXf::Zero(DoF + this->actID, DoF + this->actID));
+	p.K.conservativeResizeLike(Eigen::MatrixXf::Zero(DoF + this->actID, DoF + this->actID));
+	p.x.conservativeResizeLike(Eigen::VectorXf::Zero(DoF + this->actID));
+	p.vel.conservativeResizeLike(Eigen::VectorXf::Zero(DoF + this->actID));
+	p.accel.conservativeResizeLike(Eigen::VectorXf::Zero(DoF + this->actID));
+	f1.conservativeResizeLike(Eigen::VectorXf::Zero(DoF + this->actID));
+
+	// mass matrix
+	p.M(DoF + this->actID - 1, DoF + this->actID - 1) = this->m_DD;
+
+	// damping matrix
+	p.C(this->currentPos - 1, this->currentPos - 1) += this->c_DD;
+	p.C(this->currentPos - 1, DoF + this->actID - 1) -= this->c_DD;
+	p.C(DoF + this->actID - 1, this->currentPos - 1) -= this->c_DD;
+	p.C(DoF + this->actID - 1, DoF + this->actID - 1) += this->c_DD;
+
+	// rigidity matrix
+	p.K(this->currentPos - 1, this->currentPos - 1) += this->k_DD;
+	p.K(this->currentPos - 1, DoF + this->actID - 1) -= this->k_DD;
+	p.K(DoF + this->actID - 1, this->currentPos - 1) -= this->k_DD;
+	p.K(DoF + this->actID - 1, DoF + this->actID - 1) += this->k_DD;
+
+
+	
 }

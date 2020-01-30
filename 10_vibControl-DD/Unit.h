@@ -6,11 +6,9 @@
 //			 https://qiita.com/shuheilocale/items/31923586ab495217742a
 class ActUnit;
 class SensorUnit;
-class RewardUnit;
 
 const int actUnitNum = 3;	
 const int sensorUnitNum = DoF + 1; // at ground and each DoF
-const int rewardUnitNum = DoF;
 const int workActUnitNum = 3;	// 使わないように!
 
 /* common variables for sensor units */
@@ -20,6 +18,9 @@ const int getAmp_steps = 150;	// get biggestDisplacement within this value
 
 /* common variables for actuator units */
 const int addUnitCoef = 0;	//add actuator units at every addUnitCoef * getAmp_steps
+
+/* Vibration control method */
+const bool useDD = true; //false -> skyhook
 
 
 
@@ -133,8 +134,12 @@ public:
 	int judgeBiggestPos(SensorUnit(&sensorUnits)[sensorUnitNum]);	// 不使用
 	void moveTo(int DoFpos);
 	void getEachBiggestDisp(SensorUnit(&sensorUnits)[sensorUnitNum]);
-	// DD
-	void attachDD(Plant& p);
+
+	/*** dynamic damper ***/
+	float m_DD;
+	float k_DD;
+	float c_DD;
+	void attachDD(Plant& p, Eigen::VectorXf& f1);
 
 	/*** leader ***/
 	// 2019.12.19 abolish leader(still some values and functions can be used)
