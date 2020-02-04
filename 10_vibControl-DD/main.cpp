@@ -5,6 +5,7 @@
 // 2019.11.26 vibration controled by multiple agent without learning and moving
 // 2019.11.26 change sensors to acceleration sensors
 // 2019.12.16 enable to set whether use OpenGL display or not
+// 2020.01.30 change actuator into dynamic damper
 
 #include "GLfunc.h"
 #include "Calculation.h"
@@ -19,17 +20,17 @@
 #define LEARN false	//if you need learning part, turn this into "true"
 #define CHECK_VIB true //output csv of all DoF
 #define SHOW_GL true	//if you want to check vib visually, turn this into "true"
-#define SHOW_WIN2 true	//window for "withoutCtrl" 処理が遅くなるけど
+#define SHOW_WIN2 false	//window for "withoutCtrl" 
 
 const float DDIntervalTime = 10.0;	//interval time for actuators to be attached
-const float controlStartTime = 10.0;	//control start time
+const float controlStartTime = steadyStateTime + 10.0;	//control start time
 const float maxSimTime = controlStartTime + actUnitNum * DDIntervalTime + DDIntervalTime * 2.0;	//max simulation time
 // const float maxSimTime = 200;	//without control
 // const float controlStartTime = maxSimTime + 1.0;	//without control
-const float learnStartTime = 2.0;	//learn start time
+const float learnStartTfime = 2.0;	//learn start time
 
 //-------bitmap出力用-------
-bool _Bitmap = true;
+bool _Bitmap = false;
 gl_screenshot gs; // bmpファイルの出力
 int tn1 = 0;
 int tn2 = 0;
@@ -45,11 +46,11 @@ std::ostringstream bmpFolderPath;
 //-------Variables for calculation (global variables)-------
 Eigen::VectorXf f1(DoF), f2(DoF);	// 1: window1(with control) 2: window2(without control)
 Eigen::MatrixXf aa(DoF, DoF), aa_inv(DoF, DoF);
-Eigen::MatrixXf aa_win2(DoF, DoF), aa_inv_win2(DoF, DoF);
+Eigen::MatrixXf aa_win2(DoF, DoF), aa_inv_win2(DoF, DoF);	// for withoutCtrl
 
 
 float t = 0.0;    //時刻[s]
-float dt = 0.005; //分解能[s]
+float dt = 0.002; //分解能[s]
 int simSteps = 0;
 
 int WinID[2] = { 0 };   //ウィンドウのID
@@ -1195,7 +1196,8 @@ int main(int argc, char *argv[])
 				sensorUnits[0].velocity = withCtrl.y_0 * 2 * M_PI * withCtrl.simFreq;	//消したい
 
 				inputIndex = 0;	//入力層ユニットの番号
-				while (inputIndex < sensorUnits[0].inputNum) {
+				// while (inputIndex < sensorUnits[0].inputNum) {
+				while (t < steadyStateTime + 5.0) {
 
 					// for keyboard http://www.charatsoft.com/develop/otogema/page/07input/index.html
 					if (GetKeyState(VK_ESCAPE) & 0x8000) // escape
@@ -1223,17 +1225,26 @@ int main(int argc, char *argv[])
 
 					eachStep();
 
-					if (t > inputIndex * sensorUnits[0].input_dt) {
-						sensorUnits[0].setInputValues(inputIndex);
-						//cout << inputIndex << "	"<< sensorUnits[0].inputValues[inputIndex] << endl;
-						inputIndex++;
+					// これはeachStep_displayの中にあるから大丈夫なはず...
+					// if (t > inputIndex * sensorUnits[0].input_dt) {
+					// 	sensorUnits[0].setInputValues(inputIndex);
+					// 	//cout << inputIndex << "	"<< sensorUnits[0].inputValues[inputIndex] << endl;
+					// 	inputIndex++;
+					// }
+
+					if (t > steadyStateTime) {
+						learnPos_bySensor(v[i]);
+						reinitVariables();
+						inputIndex = 0;
+						break;
 					}
 				}
 				//cout << "freq = " << freqSet[v[i]] << endl;
 
-				learnPos_bySensor(v[i]);
-				reinitVariables();
-				inputIndex = 0;
+				// ここでif(t > steadyStateTime)とかにする(定常状態で学習)
+				// learnPos_bySensor(v[i]);
+				// reinitVariables();
+				// inputIndex = 0;
 
 				//} while (Et > 0.1);	//この値次第で学習回数が大幅に変わるので注意
 			}

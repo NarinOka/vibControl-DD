@@ -3,7 +3,7 @@
 
 
 #define DoF 5	//number of DoF
-#define VIBMODE 3	//specify vibration mode for simulation here(from 1 to DoF)
+#define VIBMODE 0	//specify vibration mode for simulation here(from 1 to DoF)
 
 #define MASS 1.5      //[kg]
 #define DAMPER 1.7    //[N s/m]
