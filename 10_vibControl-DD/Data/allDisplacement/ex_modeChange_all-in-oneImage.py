@@ -16,10 +16,10 @@ plot_styles: dict = {
     2: dict(marker="o", color="blue"),
     3: dict(marker="x", color="green"),
 }
-
+xmin, xmax = 0.0, 0.045
 
 def main():
-    file = "21-23-49_freq2.5_modeChange.csv"
+    file = "10-55-12_freq9.64_modeChange.csv"
     csv2png(file)
 
 
@@ -33,12 +33,13 @@ def csv2png(file):
     fig = plt.figure(figsize=(4, 8))
     amp1 = fig.add_subplot(111)
     amp1.grid()
+    amp1.tick_params(labelsize=20) # https://qiita.com/Tatejimaru137/items/4ee6a73114d07d85bfd7
 
     for wv_i in range(act_num):
 
-        amp1.set_xticks(np.arange(0, 2, 0.1))
+        amp1.set_xticks(np.arange(0, 2, 0.02))
         amp1.set_yticks(np.arange(1, unit_num, 1)) # 縦軸の0を表示しないため1から
-        amp1.set_xlim(0.0, 0.3)
+        amp1.set_xlim(xmin, xmax)
         amp1.set_ylim(0.0, unit_num - 1)  # DOFをcsvに出力し，それを読み込むようにしたい
 
         amp1.set_xlabel("Maximum displacement [m]")
@@ -50,7 +51,7 @@ def csv2png(file):
         
     #fig.legend(bbox_to_anchor=(1.05, 0.94), loc="lower right", borderaxespad=0, fontsize = 20)
 
-    fig.savefig("%s.png" % (file), bbox_inches="tight", pad_inches=0.2)  
+    fig.savefig("%s.pdf" % (file), bbox_inches="tight", pad_inches=0.2)  
     #  bbox_inches="tight" : グラフが見切れないように， pad_inches=0.2 : グラフ余白　https://qiita.com/MENDY/items/fe9b0c50383d8b2fd919
     plt.close()
 

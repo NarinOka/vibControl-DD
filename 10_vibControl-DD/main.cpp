@@ -15,19 +15,21 @@
 
 //-------User Control Section-------
 #define BETA 1.0 / 6.0	//linear acceleration method (β=1/6 for Newmark-beta)
-#define FILEOPEN true	//if you want to output csv, turn this into "true"
+#define FILEOPEN false	//if you want to output csv, turn this into "true"
 #define LEARN false	//if you need learning part, turn this into "true"
 #define CHECK_VIB true //output csv of all DoF
 #define SHOW_GL true	//if you want to check vib visually, turn this into "true"
-#define SHOW_WIN2 false	//window for "withoutCtrl" これをtureにするなら，aaとaa_invのサイズを工夫するべき
-const float controlStartTime = 5.0;	//control start time
-const float DDIntervalTime = 5.0;	//interval time for actuators to be attached
-const float maxSimTime = controlStartTime + actUnitNum * DDIntervalTime + DDIntervalTime;	//max simulation time
+#define SHOW_WIN2 true	//window for "withoutCtrl" 処理が遅くなるけど
+
+const float DDIntervalTime = 10.0;	//interval time for actuators to be attached
+const float controlStartTime = 10.0;	//control start time
+const float maxSimTime = controlStartTime + actUnitNum * DDIntervalTime + DDIntervalTime * 2.0;	//max simulation time
+// const float maxSimTime = 200;	//without control
 // const float controlStartTime = maxSimTime + 1.0;	//without control
 const float learnStartTime = 2.0;	//learn start time
 
 //-------bitmap出力用-------
-bool _Bitmap = false;
+bool _Bitmap = true;
 gl_screenshot gs; // bmpファイルの出力
 int tn1 = 0;
 int tn2 = 0;
@@ -43,6 +45,7 @@ std::ostringstream bmpFolderPath;
 //-------Variables for calculation (global variables)-------
 Eigen::VectorXf f1(DoF), f2(DoF);	// 1: window1(with control) 2: window2(without control)
 Eigen::MatrixXf aa(DoF, DoF), aa_inv(DoF, DoF);
+Eigen::MatrixXf aa_win2(DoF, DoF), aa_inv_win2(DoF, DoF);
 
 
 float t = 0.0;    //時刻[s]
@@ -52,9 +55,11 @@ int simSteps = 0;
 int WinID[2] = { 0 };   //ウィンドウのID
 int winNum = 0;       //今処理しているウィンドウの数字
 
+// allDisplacement
 ofstream allDisplacement;
 ofstream actHistory;
 ofstream modeChange_byAct;
+ofstream compare;	// compare result of learning and measured value
 // learn
 ofstream learnError;
 ofstream networkParams;
@@ -129,6 +134,13 @@ void calc_setup()
 	aa = withCtrl.M + dt * withCtrl.C / 2 + BETA * dt * dt * withCtrl.K; // a1,a2を求めるときに必要
 	aa_inv = aa.inverse();
 
+	if (SHOW_WIN2) {
+		aa_win2 = Eigen::MatrixXf::Zero(DoF, DoF);
+		aa_inv_win2 = Eigen::MatrixXf::Zero(DoF, DoF);
+		aa_win2 = withCtrl.M + dt * withCtrl.C / 2 + BETA * dt * dt * withCtrl.K; // a1,a2を求めるときに必要
+		aa_inv_win2 = aa_win2.inverse();
+	}
+
 }
 
 
@@ -138,8 +150,8 @@ void reinitVariables()
 	t = 0.0;
 	// dt = 0.005;
 	simSteps = 0;
-	workingActNum = 0;	
-	for(int i= 0;i<DoF;i++)
+	workingActNum = 0;
+	for (int i = 0; i < DoF; i++)
 		attachedActNum[i] = 0;
 
 	// plant
@@ -162,7 +174,7 @@ void reinitVariables()
 
 	withoutCtrl.y = 0.0;
 	withoutCtrl.vy = 0.0;
-	withoutCtrl.ay = 0.0;	
+	withoutCtrl.ay = 0.0;
 
 	withoutCtrl.x = Eigen::VectorXf::Zero(DoF);
 	withoutCtrl.vel = Eigen::VectorXf::Zero(DoF);
@@ -184,8 +196,8 @@ void reinitVariables()
 //各時刻における位置の算出(Newmark-beta method)
 void calc_vib()
 {
-		Eigen::VectorXf x_past(DoF), v_past(DoF), a_past(DoF),
-			f_past(DoF); // 1step前(現在)の値
+	Eigen::VectorXf x_past(DoF), v_past(DoF), a_past(DoF),
+		f_past(DoF); // 1step前(現在)の値
 
 
 	if (winNum == 0)
@@ -197,8 +209,8 @@ void calc_vib()
 			f_past.resize(DoF + workingActNum);
 		}
 
-	  // External force	//external force from displacement excitation added to
-	  // DoF No.1
+		// External force	//external force from displacement excitation added to
+		// DoF No.1
 		f1[0] += (withCtrl.k[0] * withCtrl.y + withCtrl.c[0] * withCtrl.vy);
 
 		x_past = withCtrl.x;
@@ -231,7 +243,7 @@ void calc_vib()
 
 
 		/************* for sensor units *************/
-		
+
 		// sensors
 		for (int i = 0; i < sensorUnitNum; i++) {
 			sensorUnits[i].readAcceleration(withCtrl);
@@ -305,7 +317,7 @@ void calc_vib()
 		a_past = withoutCtrl.accel;
 
 		withoutCtrl.accel =
-			aa_inv * (f2 - withoutCtrl.C * (v_past + a_past * dt / 2.0) -
+			aa_inv_win2 * (f2 - withoutCtrl.C * (v_past + a_past * dt / 2.0) -
 				withoutCtrl.K * (x_past + dt * v_past + (0.5 - BETA) * dt * dt * a_past));
 
 		withoutCtrl.vel = v_past + 0.5 * (withoutCtrl.accel + a_past) * dt;
@@ -344,8 +356,6 @@ void display()
 
 
 	// -----output file-----
-	outBMP(_Bitmap);
-	// ----- -----
 	eachStep_display();
 
 	//質点間を結ぶ線の描画 //縦長の線
@@ -451,7 +461,7 @@ void display()
 				-0.35 + withCtrl.x[i - 1], -0.90 + i * length);
 		}
 	}
-	//act unit
+	//act units
 	for (int i = 0; i < actUnitNum; i++) {
 		if (winNum == 0) {
 
@@ -482,6 +492,10 @@ void display()
 	}
 
 	glFlush(); //実行されていないOpenGLの命令をすべて実行する
+	
+	// ----- 描画後にこの関数ある必要あり -----
+	outBMP(_Bitmap);
+	// ----- -----
 }
 
 
@@ -512,7 +526,7 @@ void initActUnits(Plant p)
 
 
 // Vibration control by units
-void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnits)[sensorUnitNum])
+void vibControl_byUnits(ActUnit(&actUnits)[actUnitNum], SensorUnit(&sensorUnits)[sensorUnitNum])
 {
 	/*一気に動かす用*/
 	//for (int i = 0; i < actUnitNum; i++) {
@@ -541,93 +555,114 @@ void vibControl_byUnits(ActUnit (&actUnits)[actUnitNum], SensorUnit (&sensorUnit
 	//int pos = actUnits[0].currentPos;
 	//f1[pos - 1] += -actUnits[0].dampingCoef * withCtrl.vel[pos - 1];
 
-	// choose position
-	int pos = 0;
 
-	if (workingActNum < actUnitNum) {
-		if(t > controlStartTime + workingActNum * DDIntervalTime){
-			if (workingActNum == 0) { //最初の一体はネットワークの出力が一番大きいところに移動
-				calc_forwardNN(sensorUnits);
-				sensorUnits[0].sort_NNoutputs(sensorUnits);
-				pos = sensorUnits[0].sortedNNoutputs[0].first;//一番大きいところ
+	if (t > controlStartTime) {
 
-				actUnits[workingActNum].moveTo(pos);
+		// choose position
+		int pos = 0;
 
-				// file output
-				for (int i = DoF; i > 0; i--) {
-					//modeChange_byAct << i << "," << sensorUnits[i].output << endl;	//normalized
-					modeChange_byAct << i << "," << sensorUnits[i].biggestDisp << endl;	//original amp
+		if (workingActNum < actUnitNum) {
+			if (t > controlStartTime + workingActNum * DDIntervalTime) {
+				if (workingActNum == 0) { //最初の一体はネットワークの出力が一番大きいところに移動
+					calc_forwardNN(sensorUnits);
+					sensorUnits[0].sort_NNoutputs(sensorUnits);
+					pos = sensorUnits[0].sortedNNoutputs[0].first;//一番大きいところ
+
+					actUnits[workingActNum].moveTo(pos);
+
+					// file output(modeChange_byAct)
+					for (int i = DoF; i > 0; i--) {
+						//modeChange_byAct << i << "," << sensorUnits[i].output << endl;	//normalized
+						modeChange_byAct << i << "," << sensorUnits[i].biggestDisp << endl;	//original amp
+					}
+					// file output(compare)
+					sensorUnits[0].sort_biggestDisps(sensorUnits); //実測値をソート
+					for (int i = DoF; i > 0; i--) {
+						float normalized = sensorUnits[i].biggestDisp / sensorUnits[0].sortedBiggestDisps[0].second;
+						compare << i << "," << sensorUnits[i].output << ","	<< normalized << endl;
+					}
+					compare << "0,0,0" << endl << endl;
 				}
-			}
-			else {//その後，センサーの読み取り値をそのまま利用
-				sensorUnits[0].sort_biggestDisps(sensorUnits);
-				pos = sensorUnits[0].sortedBiggestDisps[0].first;//一番大きいところ
 
-				actUnits[workingActNum].moveTo(pos);
+				else {//その後，センサーの読み取り値をそのまま利用
+					sensorUnits[0].sort_biggestDisps(sensorUnits);
+					pos = sensorUnits[0].sortedBiggestDisps[0].first;//一番大きいところ
 
-				// file output
-				for (int i = DoF; i > 0; i--) {
-					sensorUnits[i].teach_sysID(sensorUnits[0]);// to get normalized biggest disp
+					actUnits[workingActNum].moveTo(pos);
 
-					//modeChange_byAct << i << "," << sensorUnits[i].normalizedBiggestDisp << endl;	// normalized
-					modeChange_byAct << i << "," << sensorUnits[i].biggestDisp << endl;	// original disp
+					// file output(modeChange_byAct)
+					for (int i = DoF; i > 0; i--) {
+						sensorUnits[i].teach_sysID(sensorUnits[0]);// to get normalized biggest disp
+
+						//modeChange_byAct << i << "," << sensorUnits[i].normalizedBiggestDisp << endl;	// normalized
+						modeChange_byAct << i << "," << sensorUnits[i].biggestDisp << endl;	// original disp
+					}
 				}
-			}
 
 				modeChange_byAct << "0,0" << endl;
 				modeChange_byAct << endl;
 
 
-			// file output
-			if (useDD)
-				actHistory << t << "," << pos << "," << actUnits[workingActNum].m_DD << "," 
-				<< actUnits[workingActNum].k_DD << "," << actUnits[workingActNum].c_DD << endl;
-			else
-				actHistory << t << "," << pos << "," << actUnits[workingActNum].dampingCoef << endl;
+				// file output
+				if (useDD)
+					actHistory << t << "," << pos << "," << actUnits[workingActNum].m_DD << ","
+					<< actUnits[workingActNum].k_DD << "," << actUnits[workingActNum].c_DD << endl;
+				else
+					actHistory << t << "," << pos << "," << actUnits[workingActNum].dampingCoef << endl;
 
 
-			cout << "##### actuator unit " << workingActNum + 1 << " moved to " << pos << " #####" << endl;
-			workingActNum++;
-			initBiggest = true;
+				cout << "##### actuator unit " << workingActNum + 1 << " moved to " << pos << " #####" << endl;
+				workingActNum++;
+				initBiggest = true;
 
-			// for display
-			attachedActNum[pos - 1]++;
-			actUnits[workingActNum].whatNumAtDoF = attachedActNum[pos - 1];
+				// for display
+				attachedActNum[pos - 1]++;
+				actUnits[workingActNum].whatNumAtDoF = attachedActNum[pos - 1];
 
-			// attach dynamic damper
-			if (useDD) {
-				actUnits[workingActNum - 1].attachDD(withCtrl, f1);
+				// attach dynamic damper
+				if (useDD) {
+					actUnits[workingActNum - 1].attachDD(withCtrl, f1);
 
-				// recalculate matrix
-				aa = withCtrl.M + dt * withCtrl.C / 2 + BETA * dt * dt * withCtrl.K; 
-				aa_inv = aa.inverse();
+					// recalculate matrix
+					aa = withCtrl.M + dt * withCtrl.C / 2 + BETA * dt * dt * withCtrl.K;
+					aa_inv = aa.inverse();
 
-				cout << "M-matrix is:\n" << withCtrl.M << endl;
-				cout << "C-matrix is:\n" << withCtrl.C << endl;
-				cout << "K-matrix is:\n" << withCtrl.K << endl;
-				cout << "aa-matrix is:\n" << aa << endl;
-				cout << "aa_inv-matrix is:\n" << aa_inv << endl << endl;
+					cout << "M-matrix is:\n" << withCtrl.M << endl;
+					cout << "C-matrix is:\n" << withCtrl.C << endl;
+					cout << "K-matrix is:\n" << withCtrl.K << endl;
+					cout << "aa-matrix is:\n" << aa << endl;
+					cout << "aa_inv-matrix is:\n" << aa_inv << endl << endl;
+				}
+
 			}
 
 		}
+		// if (t > controlStartTime + (workingActNum - 1) * controlStartTime + 0.4 && initBiggest) {
+		if (t > controlStartTime + workingActNum * DDIntervalTime / 2.0 && initBiggest) {
+			//より正確にモードが得られるように
+			for (int i = 1; i < sensorUnitNum; i++) {
+				sensorUnits[i].biggestDisp = 0.0;	//initialization for next step
+			}
+			initBiggest = false;
+			cout << "Biggest displacements reset" << endl << endl;
+		}
+
+		// additional damping force
+		if (!useDD) {
+			for (int i = 0; i < actUnitNum; i++) {
+				if (actUnits[i].currentPos != 0) {
+					f1[actUnits[i].currentPos - 1] += -actUnits[i].dampingCoef * withCtrl.vel[actUnits[i].currentPos - 1];
+				}
+			}
+		}
+
 
 	}
-	// if (t > controlStartTime + (workingActNum - 1) * controlStartTime + 0.4 && initBiggest) {
-	if (t > controlStartTime + workingActNum * DDIntervalTime - withCtrl.simT * 3.0 && initBiggest) {
-		//より正確にモードが得られるように
+
+	// 最初のアクチュエータユニットが付加される前の記録用
+	if (t < controlStartTime - DDIntervalTime / 2.0) {
 		for (int i = 1; i < sensorUnitNum; i++) {
 			sensorUnits[i].biggestDisp = 0.0;	//initialization for next step
-		}
-		initBiggest = false;
-			cout << "Biggest displacements reset" << endl << endl;
-	}
-
-	// additional damping force
-	if (!useDD) {
-		for (int i = 0; i < actUnitNum; i++) {
-			if (actUnits[i].currentPos != 0) {
-				f1[actUnits[i].currentPos - 1] += -actUnits[i].dampingCoef * withCtrl.vel[actUnits[i].currentPos - 1];
-			}
 		}
 	}
 
@@ -693,23 +728,24 @@ void fileOpen(bool fopen)
 			allDisplacement.open(dispFolderPath.str() + "\\" + time_now + "_freq" + oss_freq.str() + ".csv");
 			actHistory.open(dispFolderPath.str() + "\\" + time_now + "_freq" + oss_freq.str() + "_actHist" + ".csv");
 			modeChange_byAct.open(dispFolderPath.str() + "\\" + time_now + "_freq" + oss_freq.str() + "_modeChange" + ".csv");
+			compare.open(dispFolderPath.str() + "\\" + time_now + "_freq" + oss_freq.str() + "_compare" + ".csv");
 		}
-			//temp
-			//sensorANDplant.open("./Data/sensorANDplant/mode"
-			//	+ oss_vibmode.str() + "_DoF" + oss_DoF.str() 
-			//	+ "_" + time_now + ".csv");
-			//sensorValues.open("./Data/sensorValues/disps_mode"
-			//	+ oss_vibmode.str() + "_DoF" + oss_DoF.str() 
-			//	+ "_" + time_now + ".csv");
-			//time_displacement_force.open("./Data/time_displacement_force/tdf_vel_mode"
-			//	+ oss_vibmode.str() + "_actPos" + oss_actPos.str() + ".csv");
-			//allDisplacement.open("./Data/allDisplacement/disps_vel_mode"
-			//	+ oss_vibmode.str() + "_actPos" + oss_actPos.str() + ".csv");			//controlled.open("./Data/controlled/mode" + oss_vibmode.str() + ".csv");
-			//vibmodes.open("./Data/vibmodes/mode" + oss_vibmode.str() + ".csv");
+		//temp
+		//sensorANDplant.open("./Data/sensorANDplant/mode"
+		//	+ oss_vibmode.str() + "_DoF" + oss_DoF.str() 
+		//	+ "_" + time_now + ".csv");
+		//sensorValues.open("./Data/sensorValues/disps_mode"
+		//	+ oss_vibmode.str() + "_DoF" + oss_DoF.str() 
+		//	+ "_" + time_now + ".csv");
+		//time_displacement_force.open("./Data/time_displacement_force/tdf_vel_mode"
+		//	+ oss_vibmode.str() + "_actPos" + oss_actPos.str() + ".csv");
+		//allDisplacement.open("./Data/allDisplacement/disps_vel_mode"
+		//	+ oss_vibmode.str() + "_actPos" + oss_actPos.str() + ".csv");			//controlled.open("./Data/controlled/mode" + oss_vibmode.str() + ".csv");
+		//vibmodes.open("./Data/vibmodes/mode" + oss_vibmode.str() + ".csv");
 
 
-		/* Headers */
-		//--- allDisplacement
+	/* Headers */
+	//--- allDisplacement
 		allDisplacement << ",Basement";
 		for (int i = 0; i < DoF; i++) {
 			allDisplacement << ",Mass " << i + 1;
@@ -722,10 +758,13 @@ void fileOpen(bool fopen)
 			actHistory << "Simulation time [s],Position,Damping coefficient" << endl;
 		//--- modeChange_byAct
 		modeChange_byAct << "Position,Amplitude" << endl;
-		//--- learnError
+		//--- compare
+		compare << "Position,Network output,Measured value" << endl;
+
+	//--- learnError
 		learnError << "Learning times,Error" << endl;
 		//--- networkParams
-		networkParams << "Learning times" ;
+		networkParams << "Learning times";
 		for (int in = 0; in < sensorUnits[0].inputNum; in++) {
 			for (int dof = 0; dof < DoF; dof++) {
 				networkParams << ",wei_" << in + 1 << "-" << dof + 1;
@@ -747,8 +786,8 @@ void fileOpen(bool fopen)
 		learningConditions << "DoF," << DoF << endl;
 		learningConditions << "Learning coefficient," << alpha << endl;	//wとb両方同じ値
 		learningConditions << "ini w and b(rand)," << w_ini << endl;	//wとb両方同じ値
-		learningConditions << "a_sigmoid," << aSig << endl;	
-		learningConditions << "sim resolution (=dt)[s]," << dt << endl;	
+		learningConditions << "a_sigmoid," << aSig << endl;
+		learningConditions << "sim resolution (=dt)[s]," << dt << endl;
 
 		//--- result
 		result << "Position,output,teach" << endl;
@@ -762,6 +801,7 @@ void fileClose()
 	allDisplacement.close();
 	actHistory.close();
 	modeChange_byAct.close();
+	compare.close();
 	learnError.close();
 	networkParams.close();
 	learningConditions.close();
@@ -774,23 +814,24 @@ void outBMP(bool bmp)
 		if (simSteps % 5 == 0) { // save data amount
 			if (winNum == 0)
 			{
-				std::ostringstream fname;
-				int tt = tn1 + 10000;
-				fname << bmpFolderPath.str() << "/" << tt << ".bmp"; //出力ファイル名
-				//※フォルダが同じ階層になかったらコンソールにエラー出る
-				//※めちゃくちゃ重くなる．
-				string name = fname.str();
-				gs.screenshot(name.c_str(), 24);
-				tn1++;
+				//std::ostringstream fname;
+				//int tt = tn1 + 10000;
+				//fname << bmpFolderPath.str() << "/" << tt << ".bmp"; //出力ファイル名
+				////※フォルダが同じ階層になかったらコンソールにエラー出る
+				////※めちゃくちゃ重くなる．
+				//string name = fname.str();
+				//gs.screenshot(name.c_str(), 24);
+				//tn1++;
 			}
 			else
 			{
-				// ostringstream fname;
-				// int tt = tn2 + 10000;
-				// fname << "Data/bitmap/window2-20190930-fn5/" << tt << ".bmp"; //出力ファイル名
-				// string name = fname.str();
-				// gs.screenshot(name.c_str(), 24);
-				// tn2++;
+				 ostringstream fname;
+				 int tt = tn2 + 10000;
+				 //fname << "Data/bitmap/window2-20190930-fn5/" << tt << ".bmp"; //出力ファイル名
+				 fname << bmpFolderPath.str() << "/" << tt << ".bmp"; //出力ファイル名
+				 string name = fname.str();
+				 gs.screenshot(name.c_str(), 24);
+				 tn2++;
 			}
 		}
 	}
@@ -803,7 +844,7 @@ void timer(int num)
 	//if (t >= maxSimTime) exit(0);	//terminate program
 	if (t >= maxSimTime
 		|| (dispofAllDoF(withCtrl) && t > controlStartTime + 0.5)
-		)	
+		)
 		// terminate conditions except Esc key
 	{
 		cout << "---termination conditions satisfied---" << endl;
@@ -880,17 +921,17 @@ void getDayTime()
 	d << lt->tm_mday; //そのまま
 
 	std::stringstream time_str;
-	if (lt->tm_hour < 10) 
+	if (lt->tm_hour < 10)
 		time_str << "0";
-	time_str << lt->tm_hour; 
+	time_str << lt->tm_hour;
 	time_str << "-";
 	if (lt->tm_min < 10)
 		time_str << "0";
-	time_str << lt->tm_min; 
+	time_str << lt->tm_min;
 	time_str << "-";
 	if (lt->tm_sec < 10)
 		time_str << "0";
-	time_str << lt->tm_sec; 
+	time_str << lt->tm_sec;
 
 	//date = "20**-**-**" (year-month-day)
 	date = d.str();
@@ -919,7 +960,7 @@ void eachStep_display()
 
 	//なぜ初期化するか⇒次の関数(vibControlとcalc_vib)で
 	//計算した外力の値を+=で代入する前に0としておくため．
-	if(useDD)
+	if (useDD)
 		f1 = Eigen::VectorXf::Zero(DoF + workingActNum);
 	else
 		f1 = Eigen::VectorXf::Zero(DoF);
@@ -934,8 +975,9 @@ void eachStep_display()
 		}
 	}
 
-	if (t >= controlStartTime)
+	if (t >= controlStartTime - DDIntervalTime) {
 		vibControl_byUnits(actUnits, sensorUnits);	//ここは変える必要がある
+	}
 
 	//calculation of state quantities of plant and sensor units
 	calc_vib();
@@ -959,7 +1001,7 @@ void eachStep_timer()
 
 }
 
-void eachStep() 
+void eachStep()
 {
 	eachStep_display();
 	eachStep_timer();
@@ -999,7 +1041,7 @@ void learnPos_bySensor(int wave_now)
 
 	learnCount++;
 
-		learnError << learnCount << "," << Et << endl;
+	learnError << learnCount << "," << Et << endl;
 
 	// -----output files-----
 	if (learnCount == 1 || learnCount % 50 == 0) {
@@ -1026,7 +1068,7 @@ void learnPos_bySensor(int wave_now)
 
 }
 
-void calc_error(SensorUnit(&sensorUnits)[sensorUnitNum]) 
+void calc_error(SensorUnit(&sensorUnits)[sensorUnitNum])
 {// 引数いらない
 	Et = 0.0;
 	for (int p = 0; p < waveNum; p++) {
@@ -1041,7 +1083,7 @@ void calc_error(SensorUnit(&sensorUnits)[sensorUnitNum])
 
 }
 
-void calc_forwardNN(SensorUnit (&sensorUnits)[sensorUnitNum])
+void calc_forwardNN(SensorUnit(&sensorUnits)[sensorUnitNum])
 {
 	sensorUnits[0].calc_inXwei();
 	sensorUnits[0].sort_biggestDisps(sensorUnits);
@@ -1061,9 +1103,9 @@ int main(int argc, char *argv[])
 
 	// folder check for file output 
 	if (LEARN && FILEOPEN) {
-		learnFolderPath << ".\\Data\\learn\\" << date 
+		learnFolderPath << ".\\Data\\learn\\" << date
 			// << "_" << time_now 
-			<< "_DoF" << DoF 
+			<< "_DoF" << DoF
 			//<< "_fn" << VIBMODE
 			<< "_waveNum" << waveNum;
 		CheckTheFolder::checkExistenceOfFolder(learnFolderPath.str());
@@ -1077,9 +1119,16 @@ int main(int argc, char *argv[])
 			;
 		CheckTheFolder::checkExistenceOfFolder(dispFolderPath.str());
 	}
-	if (_Bitmap) {
-		bmpFolderPath << ".\\Data\\bitmap\\withCtrl\\"
-			<< date << "_DoF" << DoF << "_fn" << VIBMODE;
+	if (_Bitmap && SHOW_GL) {
+		if (!SHOW_WIN2) {
+			bmpFolderPath << ".\\Data\\bitmap\\withCtrl\\"
+				<< date << "_DoF" << DoF << "_fn" << VIBMODE;
+		}
+		else {//(SHOW_WIN2)
+			bmpFolderPath << ".\\Data\\bitmap\\withoutCtrl\\"
+				<< date << "_DoF" << DoF << "_fn" << VIBMODE;
+		}
+
 		CheckTheFolder::checkExistenceOfFolder(bmpFolderPath.str());
 	}
 
@@ -1094,7 +1143,7 @@ int main(int argc, char *argv[])
 						// sensorUnits[0].inputNumを使用するのでinitSensorUnitsのあと
 
 	// https://stackoverflow.com/questions/15889578/how-can-i-resize-a-2d-vector-of-objects-given-the-width-and-height
-	input_NN.resize(waveNum, vector<float>(sensorUnits[0].inputNum)); 
+	input_NN.resize(waveNum, vector<float>(sensorUnits[0].inputNum));
 
 	cout << "M-matrix is:\n" << withCtrl.M << endl;
 	cout << "C-matrix is:\n" << withCtrl.C << endl;
@@ -1103,7 +1152,7 @@ int main(int argc, char *argv[])
 	cout << "aa_inv-matrix is:\n" << aa_inv << endl;
 	cout << "natural frequencies [Hz] are:\n" << withCtrl.natural_freq << endl;
 	cout << "natural modes are:\n" << withCtrl.natural_modes << endl << endl;
-	cout << "vibration period T[s] is :" <<withCtrl.simT << endl;
+	cout << "vibration period T[s] is :" << withCtrl.simT << endl;
 
 
 	if (LEARN) {
@@ -1127,7 +1176,7 @@ int main(int argc, char *argv[])
 			// }
 
 
-freChanged:
+		freChanged:
 			/* learnPos_bySensor */
 			//まずここにshuffle操作を入れて振動数がランダムに選択されるようにしたい．
 			random_device seed_gen;
@@ -1136,55 +1185,55 @@ freChanged:
 
 			// process of each freq
 			for (int i = 0; i < waveNum; i++) {
-freChanged2:
-				
+			freChanged2:
+
 				//cout << "Freq for learning = " << freqSet[v[i]] << endl;
-					withCtrl.simFreq = freqSet[v[i]];	//shuffleした周波数に設定
+				withCtrl.simFreq = freqSet[v[i]];	//shuffleした周波数に設定
 
-				//do {//ある程度覚えてから周波数を変えるように変更
+			//do {//ある程度覚えてから周波数を変えるように変更
 
-					sensorUnits[0].velocity = withCtrl.y_0 * 2 * M_PI * withCtrl.simFreq;	//消したい
+				sensorUnits[0].velocity = withCtrl.y_0 * 2 * M_PI * withCtrl.simFreq;	//消したい
 
-					inputIndex = 0;	//入力層ユニットの番号
-					while (inputIndex < sensorUnits[0].inputNum) {
+				inputIndex = 0;	//入力層ユニットの番号
+				while (inputIndex < sensorUnits[0].inputNum) {
 
-						// for keyboard http://www.charatsoft.com/develop/otogema/page/07input/index.html
-						if (GetKeyState(VK_ESCAPE) & 0x8000) // escape
-							goto finish; // http://www9.plala.or.jp/sgwr-t/c/sec06-6.html
+					// for keyboard http://www.charatsoft.com/develop/otogema/page/07input/index.html
+					if (GetKeyState(VK_ESCAPE) & 0x8000) // escape
+						goto finish; // http://www9.plala.or.jp/sgwr-t/c/sec06-6.html
 
-						//要改良
+					//要改良
 
-						//if (GetKeyState(VK_RETURN) & 0x8000) { //return(enter)
-						//	inputIndex = sensorUnits[0].inputNum - 1;
-						//
-						//	if (v[i] == waveNum - 1) {
-						//		cout << "--- frequency for learning changed ---" << endl;
-						//		
-						//		goto freChanged;
-						//	}
-						//	else {
-						//		cout << "--- frequency for learning changed " 
-						//			<< freqSet[v[i]] << " → " << freqSet[v[i + 1]] << endl;
-						//		i++;
-						//
-						//		goto freChanged2;
-						//	}
-						//}
+					//if (GetKeyState(VK_RETURN) & 0x8000) { //return(enter)
+					//	inputIndex = sensorUnits[0].inputNum - 1;
+					//
+					//	if (v[i] == waveNum - 1) {
+					//		cout << "--- frequency for learning changed ---" << endl;
+					//		
+					//		goto freChanged;
+					//	}
+					//	else {
+					//		cout << "--- frequency for learning changed " 
+					//			<< freqSet[v[i]] << " → " << freqSet[v[i + 1]] << endl;
+					//		i++;
+					//
+					//		goto freChanged2;
+					//	}
+					//}
 
 
-						eachStep();
+					eachStep();
 
-						if (t > inputIndex * sensorUnits[0].input_dt) {
-							sensorUnits[0].setInputValues(inputIndex);
-							//cout << inputIndex << "	"<< sensorUnits[0].inputValues[inputIndex] << endl;
-							inputIndex++;
-						}
+					if (t > inputIndex * sensorUnits[0].input_dt) {
+						sensorUnits[0].setInputValues(inputIndex);
+						//cout << inputIndex << "	"<< sensorUnits[0].inputValues[inputIndex] << endl;
+						inputIndex++;
 					}
-					//cout << "freq = " << freqSet[v[i]] << endl;
+				}
+				//cout << "freq = " << freqSet[v[i]] << endl;
 
-					learnPos_bySensor(v[i]);
-					reinitVariables();
-					inputIndex = 0;
+				learnPos_bySensor(v[i]);
+				reinitVariables();
+				inputIndex = 0;
 
 				//} while (Et > 0.1);	//この値次第で学習回数が大幅に変わるので注意
 			}
@@ -1242,7 +1291,7 @@ freChanged2:
 	if (!SHOW_GL) { //without display
 		reinitVariables();
 
-			while (t <= maxSimTime
+		while (t <= maxSimTime
 			&& !(dispofAllDoF(withCtrl) && t > controlStartTime + 0.5)
 			) {
 
@@ -1271,21 +1320,21 @@ freChanged2:
 		glutReshapeFunc(resize); //ウィンドウサイズ変更イベント時のコールバック関数の設定
 		 /* 入力処理ルーチンの設定 */
 		glutKeyboardFunc(keyboard);
-		glClearColor(1.0, 1.0, 1.0,	1.0); //ウィンドウを塗りつぶす色の指定（R，G，B，不透明度）
+		glClearColor(1.0, 1.0, 1.0, 1.0); //ウィンドウを塗りつぶす色の指定（R，G，B，不透明度）
 	//-------Window for withoutCtrl----------------------------------------------------------------------------
 		if (SHOW_WIN2) {
 			glutInitWindowPosition(600, 100);
 			//glutInitWindowSize(WIDTH, (int)HEIGHT*DoF / 5);
 			glutInitWindowSize(WIDTH, HEIGHT);
-			
-			WinID[1] = glutCreateWindow("without control"); 
-			glutDisplayFunc(display); 
-			glutReshapeFunc(resize); 
-			  /* 入力処理ルーチンの設定 */
+
+			WinID[1] = glutCreateWindow("without control");
+			glutDisplayFunc(display);
+			glutReshapeFunc(resize);
+			/* 入力処理ルーチンの設定 */
 			glutKeyboardFunc(keyboard);
-			glClearColor(1.0, 1.0, 1.0, 1.0); 
+			glClearColor(1.0, 1.0, 1.0, 1.0);
 		}
-	//-----------------------------------------------------------------------------------
+		//-----------------------------------------------------------------------------------
 
 		glutTimerFunc(10, timer, 0); // 100msec.後にtimer1();関数起動
 		glutMainLoop(); //無限ループ：プログラムがイベント待ちになる

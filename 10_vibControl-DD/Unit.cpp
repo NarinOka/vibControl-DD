@@ -326,10 +326,10 @@ ActUnit::ActUnit(int ID, Plant p)
 	this->actID = ID;
 
 	/*** dynamic damper ***/ //とりあえずすべてのactが同じ値を持つ．1st natufreqでDoF5につくのに最適なパラメータ
-	// this->m_DD = 0.1;
-	// this->k_DD = 23.0;
-	// this->c_DD = 0.46;
-	this->setDDparams(p);
+	this->m_DD = m_DD_mode[0];
+	this->c_DD = c_DD_mode[0];
+	this->k_DD = k_DD_mode[0];
+	//this->setDDparams(p);
 
 	/*** leader ***/
 	this->attachedNum_max.resize(DoF);

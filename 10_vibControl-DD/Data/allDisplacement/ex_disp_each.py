@@ -29,13 +29,15 @@ oneFig = True # 全ての自由度のグラフを1つのfigにsubplotでまと�
                 # Falseの時が(gridとか)うまくいかない
 
 def main():
-    file = "21-25-26_freq11.7.csv"
+    file = "10-25-15_freq2.56257.csv"
     csv2png(file)
 
 
 def csv2png(file):
     df = pd.read_csv(file, index_col=0)
     pos_num: int = 6
+    xmin, xmax = 0.0, 20.0
+    ymin, ymax = -0.85, 0.85
 
     if oneFig:
         fig = plt.figure(figsize=(6, 12))
@@ -56,11 +58,14 @@ def csv2png(file):
             amp1 = fig.add_subplot(111)
 
         # plt.title(file)
-        amp1.set_xticks(np.arange(0.0, 20.0, 1.0))
-        amp1.set_yticks(np.arange(-0.5, 0.5, 0.1))
-        amp1.set_xlim(0.0,8.0)
-        amp1.set_ylim(-0.15,0.15)
+        amp1.set_xticks(np.arange(0.0, 100.0, 2.0))
+        amp1.set_yticks(np.arange(-10, 10, 0.2))
+        amp1.set_xlim(xmin, xmax)
+        amp1.set_ylim(ymin, ymax)
         amp1.grid() 
+        amp1.vlines(5.0, ymin, ymax, linewidth=2.0, color = "red")
+        amp1.vlines(10.0, ymin, ymax, linewidth=2.0, color = "blue")
+        amp1.vlines(15.0, ymin, ymax, linewidth=2.0, color = "green")
 
         if oneFig:
             if pos_i == 1:    # 最後(Mass 1)だけxlabelつける
@@ -78,7 +83,7 @@ def csv2png(file):
             # print(i)
             amp1.plot(df.index, dat, label = i, **plot_styles[pos_i]) # iは0行目の列番号(header)
 
-        amp1.legend(bbox_to_anchor=(1, 1), loc='upper right', borderaxespad=0)
+        amp1.legend(bbox_to_anchor=(1, 1), loc='upper right', borderaxespad=0, fontsize = 12)
         
         if not oneFig:
             fig.savefig(file+"_Mass" +str(pos_i)+".png", bbox_inches='tight', transparent = False) # グラフが見切れないように
@@ -86,7 +91,7 @@ def csv2png(file):
     #plt.legend(bbox_to_anchor=(1, 1), loc='upper right', borderaxespad=0, fontsize = 17)
     
     if oneFig:
-        fig.savefig(file+"_oneFig_3"+".eps", bbox_inches='tight', transparent = False) # グラフが見切れないように
+        fig.savefig(file+"_oneFig"+".pdf", bbox_inches='tight', transparent = False) # グラフが見切れないように
     plt.close()
 
 
