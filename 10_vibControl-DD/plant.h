@@ -3,7 +3,7 @@
 
 
 #define DoF 5	//number of DoF
-#define VIBMODE 0	//specify vibration mode for simulation here(from 1 to DoF)
+#define VIBMODE 1	//specify vibration mode for simulation here(from 1 to DoF)1
 
 #define MASS 1.5      //[kg]
 #define DAMPER 1.7    //[N s/m]
@@ -11,22 +11,52 @@
 
 // external force
 #define SUPERPOSED false	// if you want to use single sinusoidal wave, turn this into "false"
-const int waveNum = 3;
+
+/* !LEARN時に変更しなくていいように改良したい */
+
+const int waveNum = 5;
 const float freqSet[waveNum] = {
 	// must be in ascending order for "setInputNum()" in SensorUnit class
 	// "waveNum" elements needed
+	// plantのインスタンスが生成された後にp.natural_freqを入れられるようにしたい．
 
-	2.5
+	//2.5
+	//,
+	2.56257
 	,
 	//3.5
 	//,
-	7.5
+	5.02
 	,
-	11.7
+	7.4801
+	,
+	//7.5
+	//,
+	9.64
+	,
+	//11.7
+	//,
+	11.7916
 };
+
+//const int waveNum = 3;
+//const float freqSet[waveNum] = {
+//	// must be in ascending order for "setInputNum()" in SensorUnit class
+//	// "waveNum" elements needed
+//	// plantのインスタンスが生成された後にp.natural_freqを入れられるようにしたい．
+//
+//	2.5
+//	,
+//	7.5
+//	,
+//	11.7
+//
+//};
 
 const float length = 0.35; //各質点間の距離
 const float MinofMax_value = 0.003;	// [m] Minimum of Max displacement(condition of simulation termination) 
+
+const float steadyStateTime = 90.0; //確実に定常状態になりそうな時間
 
 class Plant
 {

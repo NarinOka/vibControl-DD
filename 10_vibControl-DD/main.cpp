@@ -16,18 +16,19 @@
 
 //-------User Control Section-------
 #define BETA 1.0 / 6.0	//linear acceleration method (β=1/6 for Newmark-beta)
-#define FILEOPEN false	//if you want to output csv, turn this into "true"
+#define FILEOPEN true	//if you want to output csv, turn this into "true"
 #define LEARN false	//if you need learning part, turn this into "true"
-#define CHECK_VIB true //output csv of all DoF
-#define SHOW_GL true	//if you want to check vib visually, turn this into "true"
+#define CHECK_VIB false //output csv of all DoF
+#define CHECK_DD false //output csv related to dynamic damper
+#define SHOW_GL false	//if you want to check vib visually, turn this into "true"
 #define SHOW_WIN2 false	//window for "withoutCtrl" 
 
 const float DDIntervalTime = 10.0;	//interval time for actuators to be attached
 const float controlStartTime = steadyStateTime + 10.0;	//control start time
+//const float controlStartTime = 95*0.008379;	//control start time
 const float maxSimTime = controlStartTime + actUnitNum * DDIntervalTime + DDIntervalTime * 2.0;	//max simulation time
 // const float maxSimTime = 200;	//without control
 // const float controlStartTime = maxSimTime + 1.0;	//without control
-const float learnStartTfime = 2.0;	//learn start time
 
 //-------bitmap出力用-------
 bool _Bitmap = false;
@@ -64,12 +65,17 @@ ofstream compare;	// compare result of learning and measured value
 // learn
 ofstream learnError;
 ofstream networkParams;
+ofstream networkParams2;
 ofstream learningConditions;
 ofstream result;
+//DynamicDamper
+ofstream dispDD;
+ofstream inertiaDD; // force dd -> attachedPos (m_dd a_dd})
 
 
 std::ostringstream learnFolderPath;
 std::ostringstream dispFolderPath;
+std::ostringstream DDFolderPath;
 
 
 Plant withCtrl(MASS, DAMPER, SPRING);	//initialize instance "withCtrl"
@@ -90,6 +96,7 @@ int learnCount = 0;
 float Ep[waveNum] = { 0.0 }; // pattern error
 float Et = 0.0; // total error
 int inputIndex = 0;	//入力層ユニットの番号
+bool dataAcquired[waveNum] = { false };
 
 //出力用
 vector<vector<float>> input_NN;	//sensorUnits[0].inputNumが未定であるため
@@ -493,7 +500,7 @@ void display()
 	}
 
 	glFlush(); //実行されていないOpenGLの命令をすべて実行する
-	
+
 	// ----- 描画後にこの関数ある必要あり -----
 	outBMP(_Bitmap);
 	// ----- -----
@@ -564,6 +571,7 @@ void vibControl_byUnits(ActUnit(&actUnits)[actUnitNum], SensorUnit(&sensorUnits)
 
 		if (workingActNum < actUnitNum) {
 			if (t > controlStartTime + workingActNum * DDIntervalTime) {
+				//***** set position of actuator unit
 				if (workingActNum == 0) { //最初の一体はネットワークの出力が一番大きいところに移動
 					calc_forwardNN(sensorUnits);
 					sensorUnits[0].sort_NNoutputs(sensorUnits);
@@ -580,7 +588,7 @@ void vibControl_byUnits(ActUnit(&actUnits)[actUnitNum], SensorUnit(&sensorUnits)
 					sensorUnits[0].sort_biggestDisps(sensorUnits); //実測値をソート
 					for (int i = DoF; i > 0; i--) {
 						float normalized = sensorUnits[i].biggestDisp / sensorUnits[0].sortedBiggestDisps[0].second;
-						compare << i << "," << sensorUnits[i].output << ","	<< normalized << endl;
+						compare << i << "," << sensorUnits[i].output << "," << normalized << endl;
 					}
 					compare << "0,0,0" << endl << endl;
 				}
@@ -620,9 +628,9 @@ void vibControl_byUnits(ActUnit(&actUnits)[actUnitNum], SensorUnit(&sensorUnits)
 				attachedActNum[pos - 1]++;
 				actUnits[workingActNum].whatNumAtDoF = attachedActNum[pos - 1];
 
-				// attach dynamic damper
+				//***** attach dynamic damper
 				if (useDD) {
-					actUnits[workingActNum - 1].attachDD(withCtrl, f1);
+					actUnits[workingActNum - 1].attachDD(withCtrl, f1); // expand matrix of plant
 
 					// recalculate matrix
 					aa = withCtrl.M + dt * withCtrl.C / 2 + BETA * dt * dt * withCtrl.K;
@@ -657,10 +665,25 @@ void vibControl_byUnits(ActUnit(&actUnits)[actUnitNum], SensorUnit(&sensorUnits)
 			}
 		}
 
+		// file output(dispDD, inertiaDD)
+		if (useDD) {
+			dispDD << t;
+			inertiaDD << t;
+			for (int i = 0; i < workingActNum; i++) {
+				dispDD << "," << withCtrl.x[DoF + i];
+				inertiaDD << "," << actUnits[i].m_DD * withCtrl.accel[DoF + i];
+			}
+			for (int i = workingActNum; i < actUnitNum; i++) {
+				dispDD << "," << 0.0;
+				inertiaDD << "," << 0.0;
+			}
+			dispDD << endl;
+			inertiaDD << endl;
+		}
 
 	}
 
-	// 最初のアクチュエータユニットが付加される前の記録用
+	// 最初のアクチュエータユニットが付加される前(workingActNum = 0)の記録用 (t <= controlStartTime)
 	if (t < controlStartTime - DDIntervalTime / 2.0) {
 		for (int i = 1; i < sensorUnitNum; i++) {
 			sensorUnits[i].biggestDisp = 0.0;	//initialization for next step
@@ -719,6 +742,7 @@ void fileOpen(bool fopen)
 		if (LEARN) {
 			learnError.open(learnFolderPath.str() + "\\" + time_now + "_error" + ".csv");
 			networkParams.open(learnFolderPath.str() + "\\" + time_now + "_params" + ".csv");
+			networkParams2.open(learnFolderPath.str() + "\\" + time_now + "_params2" + ".csv");
 			learningConditions.open(learnFolderPath.str() + "\\" + time_now + "_lc" + ".csv");
 			result.open(learnFolderPath.str() + "\\" + time_now + "_result" + ".csv");
 		}
@@ -730,6 +754,10 @@ void fileOpen(bool fopen)
 			actHistory.open(dispFolderPath.str() + "\\" + time_now + "_freq" + oss_freq.str() + "_actHist" + ".csv");
 			modeChange_byAct.open(dispFolderPath.str() + "\\" + time_now + "_freq" + oss_freq.str() + "_modeChange" + ".csv");
 			compare.open(dispFolderPath.str() + "\\" + time_now + "_freq" + oss_freq.str() + "_compare" + ".csv");
+		}
+		if (CHECK_DD) {
+			dispDD.open(DDFolderPath.str() + "\\" + time_now + "_freq" + oss_freq.str() + "_dispDD" + ".csv");
+			inertiaDD.open(DDFolderPath.str() + "\\" + time_now + "_freq" + oss_freq.str() + "_inertiaDD" + ".csv");
 		}
 		//temp
 		//sensorANDplant.open("./Data/sensorANDplant/mode"
@@ -747,7 +775,7 @@ void fileOpen(bool fopen)
 
 	/* Headers */
 	//--- allDisplacement
-		allDisplacement << ",Basement";
+		allDisplacement << "Simulation time [s],Basement";
 		for (int i = 0; i < DoF; i++) {
 			allDisplacement << ",Mass " << i + 1;
 		}
@@ -762,7 +790,8 @@ void fileOpen(bool fopen)
 		//--- compare
 		compare << "Position,Network output,Measured value" << endl;
 
-	//--- learnError
+	//--- learn
+		//--- learnError
 		learnError << "Learning times,Error" << endl;
 		//--- networkParams
 		networkParams << "Learning times";
@@ -775,12 +804,14 @@ void fileOpen(bool fopen)
 			networkParams << ",bias_" << j + 1;
 		}
 		networkParams << endl;
+		//--- no headers for "networkParams2"
 		//--- learningConditions
-		learningConditions << "waveNum," << waveNum << endl;
+		// freqを1番上にしておかないとグラフ作成が大変
 		learningConditions << "frequency [Hz]";
 		for (int i = 0; i < waveNum; i++)
 			learningConditions << ',' << freqSet[i];
 		learningConditions << endl;
+		learningConditions << "waveNum," << waveNum << endl;
 		learningConditions << "input wave range [s]," << sensorUnits[0].inputWaveRange << endl;
 		learningConditions << "input wave dt [s]," << sensorUnits[0].input_dt << endl;
 		learningConditions << "input unit num [-]," << sensorUnits[0].inputNum << endl;
@@ -793,7 +824,34 @@ void fileOpen(bool fopen)
 		//--- result
 		result << "Position,output,teach" << endl;
 
+	//--- DynamicDamper
+		//--- dispDD
+		dispDD << "Simulation time [s]";
+		for (int i = 0; i < actUnitNum; i++) {
+			if (i + 1 % 10 == 1)
+				dispDD << "," << i + 1 << "st";
+			else if (i + 1 % 10 == 2)
+				dispDD << "," << i + 1 << "nd";
+			else if (i + 1 % 10 == 3)
+				dispDD << "," << i + 1 << "rd";
+			else
+				dispDD << "," << i + 1 << "th";
+		}
+		dispDD << endl;
 
+		//--- inertiaDD
+		inertiaDD << "Simulation time [s]";
+		for (int i = 0; i < actUnitNum; i++) {
+			if (i + 1 % 10 == 1)
+				inertiaDD << "," << i + 1 << "st";
+			else if (i + 1 % 10 == 2)
+				inertiaDD << "," << i + 1 << "nd";
+			else if (i + 1 % 10 == 3)
+				inertiaDD << "," << i + 1 << "rd";
+			else
+				inertiaDD << "," << i + 1 << "th";
+		}
+		inertiaDD << endl;
 	}
 }
 
@@ -803,10 +861,15 @@ void fileClose()
 	actHistory.close();
 	modeChange_byAct.close();
 	compare.close();
+
 	learnError.close();
 	networkParams.close();
+	networkParams2.close();
 	learningConditions.close();
 	result.close();
+
+	dispDD.close();
+	inertiaDD.close();
 }
 
 void outBMP(bool bmp)
@@ -826,13 +889,13 @@ void outBMP(bool bmp)
 			}
 			else
 			{
-				 ostringstream fname;
-				 int tt = tn2 + 10000;
-				 //fname << "Data/bitmap/window2-20190930-fn5/" << tt << ".bmp"; //出力ファイル名
-				 fname << bmpFolderPath.str() << "/" << tt << ".bmp"; //出力ファイル名
-				 string name = fname.str();
-				 gs.screenshot(name.c_str(), 24);
-				 tn2++;
+				ostringstream fname;
+				int tt = tn2 + 10000;
+				//fname << "Data/bitmap/window2-20190930-fn5/" << tt << ".bmp"; //出力ファイル名
+				fname << bmpFolderPath.str() << "/" << tt << ".bmp"; //出力ファイル名
+				string name = fname.str();
+				gs.screenshot(name.c_str(), 24);
+				tn2++;
 			}
 		}
 	}
@@ -991,7 +1054,7 @@ void eachStep_timer()
 	/********** in timer func **********/
 	t += dt; // update time
 	simSteps++;
-	if (simSteps % 10000 == 0) cout << simSteps << " simulation steps" << endl;
+	if (simSteps % 10000 == 0 && !LEARN) cout << simSteps << " simulation steps" << endl;
 
 	withCtrl.cal_vibTimes(t);
 	withoutCtrl.cal_vibTimes(t);
@@ -1011,30 +1074,52 @@ void eachStep()
 
 /*** for learning ***/
 
-
 // 2019.12.28 先生に報告
 void learnPos_bySensor(int wave_now)
 {
-	sensorUnits[0].calc_inXwei();	//忘れてた！
+	if (dataAcquired[wave_now]) {
+		sensorUnits[0].inputValues = input_NN[wave_now];	//use saved value
 
-	sensorUnits[0].sort_biggestDisps(sensorUnits);
-	input_NN[wave_now] = sensorUnits[0].inputValues;
+		sensorUnits[0].calc_inXwei();
 
-	for (int i = 1; i < sensorUnitNum; i++) {
-		/*forward calculation*/
-		sensorUnits[i].calc_output(sensorUnits[0]);
-		/*update parameters*/
-		sensorUnits[i].teach_sysID(sensorUnits[0]);
-		sensorUnits[i].calc_dEdb_sensor();
-		sensorUnits[i].updateBias_sensor();
+		for (int i = 1; i < sensorUnitNum; i++) {
+			/*forward calculation*/
+			sensorUnits[i].calc_output(sensorUnits[0]);
+			/*update parameters*/
+			sensorUnits[i].normalizedBiggestDisp = teach_NN[wave_now][i - 1];
+			sensorUnits[i].calc_dEdb_sensor();
+			sensorUnits[i].updateBias_sensor();
 
-		// for file output
-		output_NN[wave_now][i - 1] = sensorUnits[i].output;	// あとでinput_NN使って計算しなおす
-		teach_NN[wave_now][i - 1] = sensorUnits[i].normalizedBiggestDisp;
+			output_NN[wave_now][i - 1] = sensorUnits[i].output;	// あとでinput_NN使って計算しなおす
 
-		//cout << sensorUnits[i].biggestDisp << endl;
+			//cout << sensorUnits[i].biggestDisp << endl;
+		}
+		//cout << endl;
 	}
-	//cout << endl;
+	else {
+		input_NN[wave_now] = sensorUnits[0].inputValues;	// save
+
+		sensorUnits[0].calc_inXwei();
+
+		sensorUnits[0].sort_biggestDisps(sensorUnits);
+
+		for (int i = 1; i < sensorUnitNum; i++) {
+			/*forward calculation*/
+			sensorUnits[i].calc_output(sensorUnits[0]);
+			/*update parameters*/
+			sensorUnits[i].teach_sysID(sensorUnits[0]);
+			sensorUnits[i].calc_dEdb_sensor();
+			sensorUnits[i].updateBias_sensor();
+
+			// for file output
+				output_NN[wave_now][i - 1] = sensorUnits[i].output;	// あとでinput_NN使って計算しなおす
+				teach_NN[wave_now][i - 1] = sensorUnits[i].normalizedBiggestDisp;
+
+			//cout << sensorUnits[i].biggestDisp << endl;
+		}
+		//cout << endl;
+	}
+
 
 	sensorUnits[0].updateWeight_sensor(sensorUnits);
 
@@ -1120,6 +1205,15 @@ int main(int argc, char *argv[])
 			;
 		CheckTheFolder::checkExistenceOfFolder(dispFolderPath.str());
 	}
+	if (CHECK_DD && FILEOPEN) {
+		DDFolderPath << ".\\Data\\DynamicDamper\\" << date
+			// << "_" << time_now 
+			<< "_DoF" << DoF
+			//<< "_fn" << VIBMODE
+			//<< "_waveNum" << waveNum
+			;
+		CheckTheFolder::checkExistenceOfFolder(DDFolderPath.str());
+	}
 	if (_Bitmap && SHOW_GL) {
 		if (!SHOW_WIN2) {
 			bmpFolderPath << ".\\Data\\bitmap\\withCtrl\\"
@@ -1157,6 +1251,11 @@ int main(int argc, char *argv[])
 
 
 	if (LEARN) {
+		if (steadyStateTime >= controlStartTime) {
+			cout << "You have to set steadyStateTime < controlStartTime to learn" << endl << endl;
+			exit(0);
+		}
+
 		cout << "*********************** START LEARNING ***********************" << endl;
 		cout << "Press \" Esc key \" to finish." << endl << endl;
 
@@ -1188,81 +1287,114 @@ int main(int argc, char *argv[])
 			for (int i = 0; i < waveNum; i++) {
 			freChanged2:
 
-				//cout << "Freq for learning = " << freqSet[v[i]] << endl;
+				// cout << "Freq for learning = " << freqSet[v[i]] << endl;
 				withCtrl.simFreq = freqSet[v[i]];	//shuffleした周波数に設定
 
-			//do {//ある程度覚えてから周波数を変えるように変更
+				do {//ある程度覚えてから周波数を変えるように変更
 
-				sensorUnits[0].velocity = withCtrl.y_0 * 2 * M_PI * withCtrl.simFreq;	//消したい
+					sensorUnits[0].velocity = withCtrl.y_0 * 2 * M_PI * withCtrl.simFreq;	//消したい
 
-				inputIndex = 0;	//入力層ユニットの番号
-				// while (inputIndex < sensorUnits[0].inputNum) {
-				while (t < steadyStateTime + 5.0) {
+					inputIndex = 0;	//入力層ユニットの番号
 
-					// for keyboard http://www.charatsoft.com/develop/otogema/page/07input/index.html
-					if (GetKeyState(VK_ESCAPE) & 0x8000) // escape
-						goto finish; // http://www9.plala.or.jp/sgwr-t/c/sec06-6.html
+					if (!dataAcquired[v[i]]) {
 
-					//要改良
+						// while (inputIndex < sensorUnits[0].inputNum) {
+						//while (t < steadyStateTime + 5.0) {
+						while (t < controlStartTime - 0.1) {
 
-					//if (GetKeyState(VK_RETURN) & 0x8000) { //return(enter)
-					//	inputIndex = sensorUnits[0].inputNum - 1;
-					//
-					//	if (v[i] == waveNum - 1) {
-					//		cout << "--- frequency for learning changed ---" << endl;
-					//		
-					//		goto freChanged;
-					//	}
-					//	else {
-					//		cout << "--- frequency for learning changed " 
-					//			<< freqSet[v[i]] << " → " << freqSet[v[i + 1]] << endl;
-					//		i++;
-					//
-					//		goto freChanged2;
-					//	}
-					//}
+							// for keyboard http://www.charatsoft.com/develop/otogema/page/07input/index.html
+							if (GetKeyState(VK_ESCAPE) & 0x8000) // escape
+								goto finish; // http://www9.plala.or.jp/sgwr-t/c/sec06-6.html
+
+							//要改良
+
+							//if (GetKeyState(VK_RETURN) & 0x8000) { //return(enter)
+						//	inputIndex = sensorUnits[0].inputNum - 1;
+						//
+						//	if (v[i] == waveNum - 1) {
+						//		cout << "--- frequency for learning changed ---" << endl;
+						//		
+						//		goto freChanged;
+						//	}
+						//	else {
+						//		cout << "--- frequency for learning changed " 
+						//			<< freqSet[v[i]] << " → " << freqSet[v[i + 1]] << endl;
+						//		i++;
+						//
+						//		goto freChanged2;
+						//	}
+						//}
+
+								eachStep();
 
 
-					eachStep();
+							// これはeachStep_displayの中にあるから大丈夫なはず...
 
-					// これはeachStep_displayの中にあるから大丈夫なはず...
-					// if (t > inputIndex * sensorUnits[0].input_dt) {
-					// 	sensorUnits[0].setInputValues(inputIndex);
-					// 	//cout << inputIndex << "	"<< sensorUnits[0].inputValues[inputIndex] << endl;
-					// 	inputIndex++;
-					// }
+							// if (t > inputIndex * sensorUnits[0].input_dt) {
+							// 	sensorUnits[0].setInputValues(inputIndex);
+							// 	//cout << inputIndex << "	"<< sensorUnits[0].inputValues[inputIndex] << endl;
+							// 	inputIndex++;
+							// }
 
-					if (t > steadyStateTime) {
+							//if (t > steadyStateTime) {
+							if (t > controlStartTime - 0.2) {
+								learnPos_bySensor(v[i]);
+								reinitVariables();
+								inputIndex = 0;
+								break;
+							}
+						}
+						// cout << "dataAcquired[" << v[i] << "]: " << dataAcquired[v[i]] << endl;
+						dataAcquired[v[i]] = true;
+					}
+					else {
 						learnPos_bySensor(v[i]);
 						reinitVariables();
 						inputIndex = 0;
-						break;
+
+						// cout << "dataAcquired[" << v[i] << "]: " << dataAcquired[v[i]] << endl;
 					}
-				}
-				//cout << "freq = " << freqSet[v[i]] << endl;
+					//cout << "freq = " << freqSet[v[i]] << endl;
 
-				// ここでif(t > steadyStateTime)とかにする(定常状態で学習)
-				// learnPos_bySensor(v[i]);
-				// reinitVariables();
-				// inputIndex = 0;
+					// ここでif(t > steadyStateTime)とかにする(定常状態で学習)
+					// learnPos_bySensor(v[i]);
+					// reinitVariables();
+					// inputIndex = 0;
 
-				//} while (Et > 0.1);	//この値次第で学習回数が大幅に変わるので注意
+				} while (Et > 0.5);	//この値次第で学習回数が大幅に変わるので注意
 			}
 			if (Et < 0.0001)	break;
 		}
 
+		// file output(networkParams2)... save the final network parameters
+		networkParams2 << learnCount;
+		for (int in = 0; in < sensorUnits[0].inputNum; in++) {
+			for (int dof = 0; dof < DoF; dof++) {
+				networkParams2 << "," << sensorUnits[0].weights_s0[in][dof];
+			}
+		}
+		for (int i = 0; i < DoF; i++) {
+			// actUnitsから，学習ネットワークにユニットをランダムに選ぶのならばここは注意
+			networkParams2 << "," << sensorUnits[i + 1].bias;
+		}
+		networkParams2 << endl;
+
+		cout << "*********************** FINISH LEARNING ***********************" << endl;
 	}
 	else { // !LEARN
 		// get values of weight and bias
 
 		int freqForLearnNum = 3; //仮
+		//int freqForLearnNum = waveNum; //仮
 		std::vector<float> freqForLearn;
 
 		cout << "reading csv..." << endl;
 
 		// learn時のsimulation conditionを読み取り
 		csv_parser lc;
-		lc.read("./Data/learn/2019-12-28_DoF5_waveNum3/16-12-25_lc.csv");
+		//lc.read("./Data/learn/2019-12-28_DoF5_waveNum3/16-12-25_lc.csv");
+		//lc.read("./Data/learn/2020-02-10_DoF5_waveNum5/11-07-58_lc.csv");
+		lc.read("./Data/learn/2020-02-17_DoF5_waveNum5/18-03-16_lc.csv");
 		for each(auto row in lc.rows())
 		{
 			if (row[0] == "input wave range [s]")	sensorUnits[0].inputWaveRange = stoi(row[1]);
@@ -1278,7 +1410,9 @@ int main(int argc, char *argv[])
 		// もしwithCtrl.simFreqがfreqForLearnになかったらtypeしなおさせたい
 
 		csv_parser parser;
-		parser.read("./Data/learn/2019-12-28_DoF5_waveNum3/16-12-25_params2.csv");
+		//parser.read("./Data/learn/2019-12-28_DoF5_waveNum3/16-12-25_params2.csv");
+		//parser.read("./Data/learn/2020-02-10_DoF5_waveNum5/11-07-58_params2.csv");
+		parser.read("./Data/learn/2020-02-17_DoF5_waveNum5/18-03-16_params2.csv");
 		int col = 1;	//weightやbiasの読み取り列数
 		//weight
 		for (int i = 0; i < sensorUnits[0].inputNum; i++) {
@@ -1301,6 +1435,8 @@ int main(int argc, char *argv[])
 
 	if (!SHOW_GL) { //without display
 		reinitVariables();
+		if(LEARN)	//もし学習後ならば再度setup
+			calc_setup();
 
 		while (t <= maxSimTime
 			&& !(dispofAllDoF(withCtrl) && t > controlStartTime + 0.5)
@@ -1311,6 +1447,8 @@ int main(int argc, char *argv[])
 	}
 	else if (SHOW_GL) {
 		reinitVariables();
+		if (LEARN)
+			calc_setup();
 
 		glutInit(&argc, argv);          // GLUTおよびOpenGL環境を初期化
 		glutInitDisplayMode(GLUT_RGBA); //ディスプレイの色をRGBで指定
@@ -1354,7 +1492,7 @@ int main(int argc, char *argv[])
 
 finish:
 	//to check leaving glutMainLoop
-	cout << endl << "*********************** finished! ***********************" << endl << endl;
+	cout << endl << "*********************** FINISH SIMULATION! ***********************" << endl << endl;
 
 
 	//--- learningConditions
