@@ -329,7 +329,9 @@ ActUnit::ActUnit(int ID, Plant p)
 	//this->m_DD = m_DD_mode[0];
 	//this->c_DD = c_DD_mode[0];
 	//this->k_DD = k_DD_mode[0];
-	this->setDDparams(p);
+	// this->setDDparams(p);
+	this->m_DD = 0.10;	//‚ ‚ç‚©‚¶‚ßÝ’è‚µ‚Ä‚¨‚­’l
+	this->calcDDparams(p);
 
 	/*** leader ***/
 	this->attachedNum_max.resize(DoF);
@@ -337,6 +339,12 @@ ActUnit::ActUnit(int ID, Plant p)
 	this->expectedRewards.resize(DoF);
 	this->in_reward.resize(DoF);
 
+	/*** console ***/
+	cout << "********** Actuator " << this->actID << " generated! **********" << endl;
+	cout << "m_DD : " << this->m_DD << endl;
+	cout << "c_DD : " << this->c_DD << endl;
+	cout << "k_DD : " << this->k_DD << endl;
+	cout << endl;
 }
 
 
@@ -521,5 +529,10 @@ void ActUnit::setDDparams(Plant p)
 		}
 
 	}
+}
+
+inline void ActUnit::calcDDparams(Plant p)
+{
+	std::tie(this->c_DD, this->k_DD) = calc_DDparams(this->m_DD, MASS, p.simFreq);
 }
 

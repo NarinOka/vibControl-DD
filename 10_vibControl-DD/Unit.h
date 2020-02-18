@@ -139,10 +139,11 @@ public:
 
 	/*** dynamic damper ***/
 	float m_DD;
-	float k_DD;
 	float c_DD;
+	float k_DD;
 	void attachDD(Plant& p, Eigen::VectorXf& f1);
-	void setDDparams(Plant p);
+	void setDDparams(Plant p);	//‚È‚é‚×‚­g‚í‚È‚¢(m_DD_mode‚ğ—p‚¢‚é‚à‚Ì)
+	void calcDDparams(Plant p); //instance¶¬‚³‚ê‚é‚½‚Ñ‚É©g‚Ì“®‹zUŠíparam‚ğŒvZ‚·‚é‚à‚Ì
 
 	/*** leader ***/
 	// 2019.12.19 abolish leader(still some values and functions can be used)

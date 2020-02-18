@@ -81,3 +81,5 @@ public:
 	}
 };
 static thread_local Rand rnd;
+
+std::tuple<float, float> calc_DDparams(float m_dd, float mass, float simFreq);	//fixed point theory

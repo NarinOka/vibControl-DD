@@ -30,3 +30,18 @@ float get_float_rand_range(float min_val, float max_val)
 
 bool lessPair(const index_value& l, const index_value& r) { return l.second < r.second; }
 bool greaterPair(const index_value& l, const index_value& r) { return l.second > r.second; }
+
+
+std::tuple<float, float> calc_DDparams(float m_dd, float mass, float simFreq)
+{
+	float c_dd, k_dd;
+	float mu = m_dd / mass;
+	float alpha_opt = 1 / (1 + mu);
+	float zeta_opt = sqrt(3.0 * mu / (8.0*(1 + mu)));
+	float omega_dd = simFreq * 2.0 * M_PI;
+
+	k_dd = pow(alpha_opt * omega_dd, 2) * m_dd;
+	c_dd = 2.0 * sqrt(m_dd * k_dd) * zeta_opt;
+
+	return{ c_dd, k_dd };
+}

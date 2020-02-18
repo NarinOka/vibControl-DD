@@ -16,7 +16,7 @@
 
 //-------User Control Section-------
 #define BETA 1.0 / 6.0	//linear acceleration method (β=1/6 for Newmark-beta)
-#define FILEOPEN true	//if you want to output csv, turn this into "true"
+#define FILEOPEN false	//if you want to output csv, turn this into "true"
 #define LEARN false	//if you need learning part, turn this into "true"
 #define CHECK_VIB false //output csv of all DoF
 #define CHECK_DD false //output csv related to dynamic damper
