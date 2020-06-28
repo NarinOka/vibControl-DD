@@ -7,7 +7,7 @@
 class ActUnit;
 class SensorUnit;
 
-const int actUnitNum = 3;	
+const int actUnitNum = 10;	
 const int sensorUnitNum = DoF + 1; // at ground and each DoF
 const int workActUnitNum = 3;	// Žg‚í‚È‚¢‚æ‚¤‚É!
 

@@ -1,11 +1,4 @@
-﻿// 07_MARL-boids by Okazaki
-// Multi-Agent Reinforcement Learning for vibration control
-// 2019.11.14 first mounted
-// 2019.11.21 vibration controled by single agent without learning
-// 2019.11.26 vibration controled by multiple agent without learning and moving
-// 2019.11.26 change sensors to acceleration sensors
-// 2019.12.16 enable to set whether use OpenGL display or not
-// 2020.01.30 change actuator into dynamic damper
+﻿// vibration control simulator by Okazaki
 
 #include "GLfunc.h"
 #include "Calculation.h"
@@ -18,14 +11,14 @@
 #define BETA 1.0 / 6.0	//linear acceleration method (β=1/6 for Newmark-beta)
 #define FILEOPEN false	//if you want to output csv, turn this into "true"
 #define LEARN false	//if you need learning part, turn this into "true"
-#define CHECK_VIB false //output csv of all DoF
+#define CHECK_VIB true //output csv of all DoF
 #define CHECK_DD false //output csv related to dynamic damper
-#define SHOW_GL false	//if you want to check vib visually, turn this into "true"
+#define SHOW_GL true	//if you want to check vib visually, turn this into "true"
 #define SHOW_WIN2 false	//window for "withoutCtrl" 
 
-const float DDIntervalTime = 10.0;	//interval time for actuators to be attached
-const float controlStartTime = steadyStateTime + 10.0;	//control start time
-//const float controlStartTime = 95*0.008379;	//control start time
+const float DDIntervalTime = 3.0;	//interval time for actuators to be attached
+//const float controlStartTime = steadyStateTime + 10.0;	//control start time
+const float controlStartTime = 3.0;	//control start time
 const float maxSimTime = controlStartTime + actUnitNum * DDIntervalTime + DDIntervalTime * 2.0;	//max simulation time
 // const float maxSimTime = 200;	//without control
 // const float controlStartTime = maxSimTime + 1.0;	//without control

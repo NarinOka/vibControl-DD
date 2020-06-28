@@ -2,6 +2,7 @@
 10_vibControl-DD/Data/
 eigen-git-mirror/
 [Bb]uild/
+*.xlsx
 
 ### https://raw.github.com/github/gitignore/72190ee30bd1e2ccc233222341435adacb7a6500/Global/Windows.gitignore
 

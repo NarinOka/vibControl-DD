@@ -330,7 +330,7 @@ ActUnit::ActUnit(int ID, Plant p)
 	//this->c_DD = c_DD_mode[0];
 	//this->k_DD = k_DD_mode[0];
 	// this->setDDparams(p);
-	this->m_DD = 0.10;	//‚ ‚ç‚©‚¶‚ßÝ’è‚µ‚Ä‚¨‚­’l
+	this->m_DD = 0.1;	//‚ ‚ç‚©‚¶‚ßÝ’è‚µ‚Ä‚¨‚­’l
 	this->calcDDparams(p);
 
 	/*** leader ***/
@@ -339,7 +339,7 @@ ActUnit::ActUnit(int ID, Plant p)
 	this->expectedRewards.resize(DoF);
 	this->in_reward.resize(DoF);
 
-	/*** console ***/
+	/*** console output ***/
 	cout << "********** Actuator " << this->actID << " generated! **********" << endl;
 	cout << "m_DD : " << this->m_DD << endl;
 	cout << "c_DD : " << this->c_DD << endl;
